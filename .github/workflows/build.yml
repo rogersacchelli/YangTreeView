@@ -1,0 +1,100 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64,   platform: x64,   selftest: true }
+          - { arch: x86,   platform: Win32, selftest: true }
+          - { arch: arm64, platform: ARM64, selftest: false }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -A ${{ matrix.platform }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Check DLL version matches src/version.h
+        shell: pwsh
+        run: |
+          $want = (Select-String src/version.h -Pattern 'YTV_VERSION_RC_STR "(.*)"').Matches[0].Groups[1].Value
+          $got  = (Get-Item build/Release/YangTreeView.dll).VersionInfo.FileVersion
+          Write-Host "DLL FileVersion: $got (expected $want)"
+          if ($got -ne $want) { throw "version mismatch" }
+
+      - name: Self-test (load DLL through the plugin ABI)
+        if: matrix.selftest
+        timeout-minutes: 3
+        shell: cmd
+        run: tests\run_selftest.bat build\Release\YangTreeView.dll build\Release\fakehost.exe
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = (Select-String src/version.h -Pattern 'YTV_VERSION_STR "(.*)"').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force plug, cli | Out-Null
+          # Plugins Admin requires YangTreeView.dll at the root of the zip
+          Copy-Item build/Release/YangTreeView.dll, LICENSE plug/
+          Compress-Archive -Path plug/* -DestinationPath "YangTreeView-$ver-${{ matrix.arch }}.zip"
+          Copy-Item build/Release/yang2html.exe, LICENSE cli/
+          Compress-Archive -Path cli/* -DestinationPath "yang2html-cli-$ver-${{ matrix.arch }}.zip"
+          Get-FileHash *.zip -Algorithm SHA256 | Format-Table -AutoSize
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zips-${{ matrix.arch }}
+          path: '*.zip'
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zips-*
+          merge-multiple: true
+          path: dist
+
+      - name: Check tag matches version
+        run: |
+          ver=$(sed -n 's/.*YTV_VERSION_STR "\(.*\)".*/\1/p' src/version.h)
+          [ "${GITHUB_REF_NAME}" = "v${ver}" ] || { echo "tag ${GITHUB_REF_NAME} != v${ver}"; exit 1; }
+          echo "VER=${ver}" >> "$GITHUB_ENV"
+
+      - name: Plugin list entries + release notes
+        run: |
+          python3 tools/pluginlist_entries.py dist "${VER}" "${GITHUB_REPOSITORY}" > dist/nppPluginList-entries.json
+          {
+            echo "## YANG Tree View ${VER}"
+            echo
+            echo "Install via **Plugins Admin** (once listed) or unzip the matching \`YangTreeView-${VER}-<arch>.zip\` into \`Notepad++\\plugins\\YangTreeView\\\`."
+            echo
+            echo "| file | sha256 |"
+            echo "|---|---|"
+            (cd dist && sha256sum *.zip | awk '{print "| " $2 " | `" $1 "` |"}')
+          } > notes.md
+          cat notes.md dist/nppPluginList-entries.json
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/nppPluginList-entries.json --title "YANG Tree View ${VER}" --notes-file notes.md

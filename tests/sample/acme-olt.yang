@@ -1,0 +1,71 @@
+module acme-olt {
+  yang-version 1.1;
+  namespace "urn:acme:olt";
+  prefix olt;
+
+  import ietf-interfaces { prefix if; }
+  import ietf-yang-types { prefix yang; }
+  include acme-olt-ont;
+
+  organization "ACME";
+  description
+    "Test module " +
+    "with concatenated strings, // not a comment
+     and a multi-line description.";
+
+  revision 2026-11-20 { description "Initial."; }
+
+  feature xgspon;
+
+  identity pon-type;
+  identity gpon { base pon-type; }
+
+  typedef pon-id { type uint16 { range "1..4096"; } }
+
+  grouping counters {
+    leaf rx-octets { type yang:counter64; config false; }
+    leaf tx-octets { type yang:counter64; config false; }
+  }
+
+  /* block comment
+     spanning lines */
+  container olt {
+    presence "OLT enabled";
+    leaf name { type string; mandatory true; }
+    list pon-port {
+      key "id";
+      max-elements 64;
+      leaf id { type pon-id; }
+      leaf if-ref { type if:interface-ref; }
+      leaf type {
+        type enumeration { enum gpon; enum xgspon { if-feature xgspon; } }
+        default gpon;
+      }
+      choice mode {
+        case auto { leaf auto-discovery { type boolean; default true; } }
+        case manual { leaf-list allowed-serial { type string { pattern '[A-Z]{4}[0-9A-F]{8}'; } } }
+      }
+      container statistics { uses counters; }
+      uses ont-list;
+      action reset {
+        input { leaf force { type boolean; } }
+        output { leaf result { type string; } }
+      }
+    }
+    leaf mtu { type uint16; units bytes; status deprecated; }
+  }
+
+  rpc reboot-olt {
+    input { leaf delay { type uint32; units seconds; } }
+  }
+
+  notification ont-alarm {
+    leaf serial { type string; }
+    leaf severity { type identityref { base pon-type; } }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    when "derived-from-or-self(if:type, 'olt:gpon')";
+    container pon { uses counters; }
+  }
+}

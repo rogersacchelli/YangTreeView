@@ -1,0 +1,15 @@
+submodule acme-olt-ont {
+  yang-version 1.1;
+  belongs-to acme-olt { prefix olt; }
+  import ietf-yang-types { prefix yt; }
+
+  grouping ont-list {
+    list ont {
+      key "onu-id";
+      leaf onu-id { type uint8; }
+      leaf serial { type string; }
+      leaf last-seen { type yt:date-and-time; }
+      uses olt:counters;
+    }
+  }
+}
