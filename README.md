@@ -83,9 +83,9 @@ tests\run_selftest.bat build\Release\YangTreeView.dll build\Release\fakehost.exe
 | `tools/gen_udl.py` | Generates the syntax-highlighting definitions (`udl/`, `src/udl_xml.h`) |
 | `tests/fakehost.cpp` | Fake Notepad++ host that drives the DLL through the plugin ABI (run in CI) |
 
-**Releasing:** bump `src/version.h`, then push a tag `vX.Y.Z`. CI builds every
-architecture, runs the self-test, and publishes a release with the zips, their SHA-256
-hashes and ready-to-paste
+**Releasing:** bump `src/version.h` (and `CHANGELOG.md`) and push to `main`. When that
+version has no release yet, CI builds every architecture, runs the self-test, creates the
+tag `vX.Y.Z` and publishes a release with the zips, their SHA-256 hashes and ready-to-paste
 [nppPluginList](https://github.com/notepad-plus-plus/nppPluginList) entries.
 
 ## Limitations
