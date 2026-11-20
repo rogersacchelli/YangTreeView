@@ -58,9 +58,27 @@ static HWND currentScintilla() {
     return which == 1 ? g_npp._scintillaSecondHandle : g_npp._scintillaMainHandle;
 }
 
-static void msg(const std::wstring& text, UINT icon = MB_ICONINFORMATION) {
-    MessageBoxW(g_npp._nppHandle, text.c_str(), kPluginName, MB_OK | icon);
+// Self-test mode (CI has no interactive desktop): when YANGTREEVIEW_SELFTEST names a
+// file, dialogs are appended to it instead of shown (answer: IDYES), and no browser
+// is launched.
+static const wchar_t* selftestLog() {
+    const wchar_t* p = _wgetenv(L"YANGTREEVIEW_SELFTEST");
+    return (p && *p) ? p : nullptr;
 }
+
+static int box(const std::wstring& text, UINT flags) {
+    if (const wchar_t* log = selftestLog()) {
+        std::ofstream o(fs::path(log), std::ios::binary | std::ios::app);
+        std::string line = narrow(text);
+        for (auto& c : line)
+            if (c == '\n' || c == '\r') c = ' ';
+        o << "[MessageBox] " << line << "\n";
+        return IDYES;
+    }
+    return MessageBoxW(g_npp._nppHandle, text.c_str(), kPluginName, flags);
+}
+
+static void msg(const std::wstring& text, UINT icon = MB_ICONINFORMATION) { box(text, MB_OK | icon); }
 
 static fs::path pluginsConfigDir() {
     wchar_t buf[MAX_PATH * 4] = {0};
@@ -172,6 +190,7 @@ static void cmdShowTree() {
             if (!o) { msg(L"Cannot write " + out.wstring(), MB_ICONERROR); return; }
             o.write(r.html.data(), (std::streamsize)r.html.size());
         }
+        if (selftestLog()) return;  // CI: don't launch a browser
         HINSTANCE h = ShellExecuteW(g_npp._nppHandle, L"open", out.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         if ((INT_PTR)h <= 32) msg(L"Tree written to:\n" + out.wstring() + L"\n\nbut no browser could be started.", MB_ICONWARNING);
     } catch (const std::exception& e) {
@@ -208,10 +227,9 @@ static void cmdInstallSyntax() {
                       L"  (remove it via Language > User Defined Language > Define your language)";
 
         if (fs::exists(target, ec) &&
-            MessageBoxW(g_npp._nppHandle, (L"YANG syntax highlighting is already installed:\n" + target.wstring() +
-                                           L"\n\nReplace it with the " + (dark ? L"dark" : L"light") +
-                                           L" colour scheme?").c_str(),
-                        kPluginName, MB_YESNO | MB_ICONQUESTION) != IDYES)
+            box(L"YANG syntax highlighting is already installed:\n" + target.wstring() + L"\n\nReplace it with the " +
+                    (dark ? L"dark" : L"light") + L" colour scheme?",
+                MB_YESNO | MB_ICONQUESTION) != IDYES)
             return;
 
         fs::create_directories(dir, ec);

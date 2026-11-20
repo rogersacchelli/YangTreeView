@@ -42,6 +42,8 @@ jobs:
         if: matrix.selftest
         timeout-minutes: 3
         shell: cmd
+        env:
+          YANGTREEVIEW_HEADLESS: "1"
         run: tests\run_selftest.bat build\Release\YangTreeView.dll build\Release\fakehost.exe
 
       - name: Package

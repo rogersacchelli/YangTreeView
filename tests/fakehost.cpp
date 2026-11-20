@@ -82,6 +82,17 @@ static std::string readAll(const std::wstring& p) {
 
 int wmain(int argc, wchar_t** argv) {
     if (argc < 4) { printf("usage\n"); return 2; }
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    // Headless mode (CI): plugin logs dialogs to a file instead of showing them.
+    // Interactive mode (default): real message boxes, closed by the watcher thread.
+    std::wstring dlgLog;
+    bool headless = GetEnvironmentVariableW(L"YANGTREEVIEW_HEADLESS", nullptr, 0) > 0;
+    if (headless) {
+        dlgLog = std::wstring(argv[3]) + L"\\dialogs.log";
+        DeleteFileW(dlgLog.c_str());
+        SetEnvironmentVariableW(L"YANGTREEVIEW_SELFTEST", dlgLog.c_str());
+        printf("headless mode: dialogs -> %ls\n", dlgLog.c_str());
+    }
     HMODULE dll = LoadLibraryW(argv[1]);
     if (!dll) { printf("FAIL LoadLibrary %lu\n", GetLastError()); return 1; }
     auto setInfo = (void (*)(NppData))GetProcAddress(dll, "setInfo");
@@ -101,7 +112,7 @@ int wmain(int argc, wchar_t** argv) {
     d._nppHandle = CreateWindowW(L"FakeNpp", L"npp", 0, 0, 0, 10, 10, nullptr, nullptr, nullptr, nullptr);
     d._scintillaMainHandle = CreateWindowW(L"FakeSci", L"sci", 0, 0, 0, 10, 10, nullptr, nullptr, nullptr, nullptr);
     d._scintillaSecondHandle = d._scintillaMainHandle;
-    CreateThread(nullptr, 0, Watcher, nullptr, 0, nullptr);
+    if (!headless) CreateThread(nullptr, 0, Watcher, nullptr, 0, nullptr);
 
     setInfo(d);
     int n = 0;
@@ -153,6 +164,14 @@ int wmain(int argc, wchar_t** argv) {
     // 5) about
     f[4]._pFunc();
     printf("TEST about: dialogs=%d\n", g_dialogs);
+    if (headless) {
+        std::string log = readAll(dlgLog);
+        size_t n = 0;
+        for (size_t p = log.find("[MessageBox]"); p != std::string::npos; p = log.find("[MessageBox]", p + 1)) ++n;
+        printf("%s", log.c_str());
+        g_dialogs = (int)n;
+        CHECK(log.find("missing '}'") != std::string::npos, "syntax error reported with message");
+    }
     CHECK(g_dialogs >= 3, "message boxes shown (error, install, about)");
     printf("%s (%d failure(s))\n", g_fail ? "SELFTEST FAILED" : "SELFTEST PASSED", g_fail);
     return g_fail ? 1 : 0;
