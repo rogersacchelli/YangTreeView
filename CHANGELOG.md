@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 - 2026-11-27
 - NETCONF request builder in the browser view too (Show YANG tree in browser, and pages
   made with `yang2html`): same form, preview and *Copy*; *Open in new tab* stays in the
   docked panel. *Copy* falls back to select-and-copy where the clipboard API is refused.
