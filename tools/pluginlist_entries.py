@@ -9,10 +9,11 @@ import os
 import sys
 
 DESCRIPTION = (
-    "Interactive, collapsible tree view of YANG modules (RFC 6020/7950) opened in your browser: "
-    "containers, lists, choices, groupings inlined across imports and submodules, search, schema "
-    "paths, types/keys/config badges. Also installs YANG syntax highlighting. "
-    "Native DLL, no Python or other runtime needed."
+    "Interactive, collapsible tree view of YANG modules (RFC 6020/7950) in a docked panel (WebView2) "
+    "or your browser: containers, lists, choices, groupings inlined across imports and submodules, "
+    "search, schema paths, types/keys/config badges, jump to source. NETCONF request builder (get, "
+    "get-config, edit-config, rpc, action) for the selected node. Also installs YANG syntax "
+    "highlighting. Native DLL, no Python needed."
 )
 
 
