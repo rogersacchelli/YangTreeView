@@ -2,7 +2,7 @@
 #pragma once
 #define YTV_VER_MAJOR 1
 #define YTV_VER_MINOR 2
-#define YTV_VER_PATCH 0
-#define YTV_VERSION_STR "1.2.0"
-#define YTV_VERSION_RC 1, 2, 0, 0
-#define YTV_VERSION_RC_STR "1.2.0.0"
+#define YTV_VER_PATCH 1
+#define YTV_VERSION_STR "1.2.1"
+#define YTV_VERSION_RC 1, 2, 1, 0
+#define YTV_VERSION_RC_STR "1.2.1.0"
