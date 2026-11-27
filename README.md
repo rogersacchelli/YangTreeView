@@ -59,6 +59,27 @@ so the path is `plugins\YangTreeView\YangTreeView.dll`, then restart Notepad++.
   - **Stays up to date:** while the panel is visible it refreshes when you save and follows
     you to another `.yang` tab (*Panel follows active tab*). Expanded nodes, selection and scroll position are kept per
     module. A syntax error doesn't interrupt you: the last good tree stays, with a red note.
+  - **NETCONF requests:** see below.
+
+### NETCONF request builder (docked panel)
+Select a node and open the **NETCONF** section of the details pane:
+
+- **Operation:** `get-config`, `edit-config`, `get` for data nodes (`get` only for
+  `config false` data), `rpc` for RPCs and `action` for actions. `get-config` and
+  `edit-config` take a datastore (running, candidate; startup for `get-config`);
+  `edit-config` takes merge, replace, create, delete or remove.
+- **Fields from the model:** one per list key on the way to the node, and, for
+  `edit-config`, the node's leaves (for RPCs and actions, the input leaves). Enums,
+  booleans and identityrefs are lists; ranges, lengths, patterns, decimals and mandatory
+  leaves are checked as you type. Empty fields aren't sent; empty keys in a `get` select
+  all entries.
+- **Namespaces** come from the model, including nodes added to other modules by
+  `augment` (e.g. `/if:interfaces/if:interface`, with its `name` key).
+- **Open in new tab** puts the request in a new Notepad++ document (XML); **Copy** copies it.
+
+The builder writes requests; it doesn't connect to devices. Use your NETCONF client to send
+them. It doesn't evaluate `when` / `must`, check leafref targets, or apply deviations and
+refines.
 
 ### Viewer
 - **Navigate:** ▸ / ▾, double-click, or the keyboard (↑ ↓ → ← Enter).
@@ -100,6 +121,10 @@ time and links its static loader, so the plugin is still a single DLL. Offline:
 MinGW can't use the static WebView2 loader, so these builds need `WebView2Loader.dll`
 (copied to `dist/<arch>/YangTreeView/`) next to the plugin.
 
+**NETCONF builder test** (Linux/WSL with `node` and `yanglint`):
+`tests/run_netconf_test.sh <yang2html>`. It renders the samples as the panel gets them
+(`yang2html --host-data`) and validates every generated request against the models.
+
 **Self-test with the real WebView2** (needs a desktop session): set
 `YANGTREEVIEW_HEADLESS=1` and `YANGTREEVIEW_SELFTEST_WEBVIEW=1` before `run_selftest.bat`;
 the fake host shows the panel in a window and waits for the page to load
@@ -114,6 +139,7 @@ forces the WebView2 start-up timeout to test the browser fallback).
 | `src/viewer_template.html` | Viewer UI; run `python tools/gen_template.py` after editing it |
 | `tools/gen_udl.py` | Generates the syntax-highlighting definitions (`udl/`, `src/udl_xml.h`) |
 | `tests/fakehost.cpp` | Fake Notepad++ host that drives the DLL through the plugin ABI (run in CI) |
+| `tests/run_netconf_test.sh` | NETCONF builder test: generated requests validated with `yanglint` (run in CI, Linux) |
 
 **Releasing:** bump `src/version.h` (and `CHANGELOG.md`) and push to `main`. When that
 version has no release yet, CI builds every architecture, runs the self-test, creates the

@@ -63,10 +63,26 @@ jobs:
           name: zips-${{ matrix.arch }}
           path: '*.zip'
 
+  netconf:
+    # NETCONF request builder: generated requests validated with yanglint (libyang)
+    name: netconf builder
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yanglint
+        run: sudo apt-get update -q && sudo apt-get install -y -q libyang-tools
+
+      - name: Build yang2html (Linux)
+        run: g++ -std=c++17 -O2 -Wall -Wextra -o yang2html src/cli_main.cpp src/yang_core.cpp
+
+      - name: Test
+        run: tests/run_netconf_test.sh ./yang2html
+
   release:
     # Releases are cut from main: if src/version.h names a version with no release yet,
     # GitHub creates tag vX.Y.Z and publishes the release. (Pushing a vX.Y.Z tag works too.)
-    needs: build
+    needs: [build, netconf]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     env:

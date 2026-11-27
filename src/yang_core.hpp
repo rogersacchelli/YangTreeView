@@ -26,6 +26,10 @@ struct RenderOptions {
     // Embed each source file's absolute path ("paths" in the payload) so a host can open
     // the file at a node's line. Off by default: pages may be shared, paths reveal folders.
     bool includePaths = false;
+    // Embed what a NETCONF request builder needs ("nc" in the payload): namespaces and
+    // prefixes of all loaded modules, their typedefs and identities, and the resolved
+    // target path (modules, list keys) of every augment.
+    bool includeNetconf = false;
 };
 
 // text: UTF-8 YANG source of the main module.

@@ -6,6 +6,7 @@
 <title>{{TITLE}}</title>
 <style>
 :root{
+  color-scheme:light;
   --bg:#ffffff; --bg2:#f6f7f9; --bg3:#eceff3; --fg:#1d2330; --muted:#6b7280; --line:#dfe3e8;
   --sel:#dbeafe; --hit:#fff3a3; --accent:#2563eb;
   --c-container:#2563eb; --c-list:#7c3aed; --c-leaf:#059669; --c-leaflist:#0d9488;
@@ -14,6 +15,7 @@
   --mono:Consolas,"Cascadia Mono","SF Mono",Menlo,monospace;
 }
 html.dark{
+  color-scheme:dark;   /* native scrollbars and form controls follow the theme */
   --bg:#1e1f22; --bg2:#26282c; --bg3:#2f3237; --fg:#d7dae0; --muted:#8b919c; --line:#3a3d43;
   --sel:#1f3a5f; --hit:#5b4d00; --accent:#60a5fa;
   --c-container:#60a5fa; --c-list:#a78bfa; --c-leaf:#34d399; --c-leaflist:#2dd4bf;
@@ -21,6 +23,7 @@ html.dark{
   --c-rpc:#f87171; --c-notif:#fb923c; --c-io:#94a3b8; --c-def:#38bdf8;
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 "Segoe UI",system-ui,sans-serif;
   height:100vh;display:flex;flex-direction:column;overflow:hidden}
 header{padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg2);display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
@@ -35,6 +38,26 @@ label.chk{display:flex;gap:4px;align-items:center;cursor:pointer;user-select:non
 .brk{display:none}
 .warn.err{color:#dc2626}
 a.goto{color:var(--accent);text-decoration:none;cursor:pointer}
+/* NETCONF request builder (docked panel) */
+#detail details.nc{margin:8px 0;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
+#detail details.nc>summary{padding:4px 8px;cursor:pointer;font-weight:600;user-select:none}
+.nc-body{padding:4px 8px 8px}
+.nc-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.nc-ops{display:inline-flex}
+.nc-ops button{border-radius:0;margin-left:-1px}
+.nc-ops button:first-child{border-radius:4px 0 0 4px;margin-left:0}
+.nc-ops button:last-child{border-radius:0 4px 4px 0}
+.nc-ops button.on{background:var(--accent);border-color:var(--accent);color:#fff;position:relative}
+.nc-sec{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:8px 0 2px}
+.nc-grid{display:grid;grid-template-columns:minmax(80px,max-content) minmax(0,1fr);gap:3px 8px;align-items:start}
+.nc-grid label{font:12px var(--mono);padding-top:3px;word-break:break-all}
+.nc-grid label.req::after{content:' *';color:#dc2626}
+.nc-grid input[type=text],.nc-grid select,.nc-grid textarea{width:100%;padding:2px 6px;border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--fg);font:12px var(--mono)}
+.nc-grid textarea{resize:vertical;min-height:2.6em}
+.nc-grid .bad{border-color:#dc2626 !important}
+.nc-grid .hint{color:var(--muted);font-size:11px;margin-top:1px}
+.nc-prob{color:#dc2626;font-size:12px;margin:6px 0 0;white-space:pre-wrap}
+pre.nc-out{font:12px var(--mono);background:var(--bg2);border:1px solid var(--line);padding:6px;max-height:45vh;overflow:auto;white-space:pre;margin:6px 0}
 a.goto:hover{text-decoration:underline}
 /* docked: pop-out button in the header's top-right corner, clear of the toolbar */
 header{position:relative}
@@ -150,6 +173,7 @@ body:not(.showdesc) .ds{display:none}
 const D = JSON.parse(document.getElementById('data').textContent);
 const G = Object.assign({}, D.groups);
 (function reg(s){ if(s.g!=null) G[s.g]={s:s,m:D.module}; (s.c||[]).forEach(reg); })(D.root);
+const NCB = (window.chrome && window.chrome.webview && D.nc) ? makeNetconf(D, G) : null;   // docked panel only
 
 const NESTED = new Set(['container','list','leaf','leaf-list','choice','case','anydata','anyxml','uses','augment','action','notification','input','output']);
 const DATANODE = new Set(['container','list','leaf','leaf-list','anydata','anyxml','rpc','action','notification','input','output']);
@@ -164,6 +188,318 @@ const $ = id => document.getElementById(id);
 const sub = (s,k) => (s.c||[]).find(x=>x.k===k);
 const subs = (s,k) => (s.c||[]).filter(x=>x.k===k);
 const esc = t => String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// netconf:begin - NETCONF request builder (docked panel only). Self-contained: uses only
+// D and G, so tests/netconf_test.js can evaluate this block on its own.
+function makeNetconf(D, G){
+  const NC = D.nc; if(!NC) return null;
+  const BASE='urn:ietf:params:xml:ns:netconf:base:1.0', YANG1='urn:ietf:params:xml:ns:yang:1';
+  const sub=(s,k)=>(s.c||[]).find(x=>x.k===k), subs=(s,k)=>(s.c||[]).filter(x=>x.k===k);
+  const xesc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const SCHEMA=new Set(['container','list','leaf','leaf-list','choice','case','anydata','anyxml','rpc','action','notification','input','output']);
+  const ELEMENT=new Set(['container','list','leaf','leaf-list','anydata','anyxml','rpc','action']);
+  const modOf=src=>(NC.src[src]||{}).m || D.module;
+  const nsOf=m=>(NC.mods[m]||{}).ns || '';
+  // "pfx:name" as written in source src -> [module, name]
+  function qname(ref, src){
+    const i=ref.indexOf(':'); if(i<0) return [modOf(src), ref];
+    const S=NC.src[src]; return [(S && S.p[ref.slice(0,i)]) || modOf(src), ref.slice(i+1)];
+  }
+  // schema children with the source each one is written in ('uses' replaced by the grouping)
+  function children(s, src, depth){
+    const out=[]; depth=depth||0; if(depth>40) return out;
+    for(const c of s.c||[]){
+      if(c.k==='uses'){ const g=c.r && G[c.r]; if(g) for(const x of children(g.s, g.s.f||g.m, depth+1)) out.push(x); }
+      else if(SCHEMA.has(c.k)) out.push({s:c, src:c.f||src});
+    }
+    return out;
+  }
+  // leaves under a node, looking through choice/case (ctx names them)
+  function leaves(s, src){
+    const out=[];
+    (function walk(s, src, ctx){
+      for(const x of children(s, src)){
+        if(x.s.k==='choice'||x.s.k==='case') walk(x.s, x.src, ctx.concat(x.s.k+' '+x.s.a));
+        else if(x.s.k==='leaf'||x.s.k==='leaf-list') out.push({s:x.s, src:x.src, ctx:ctx.join(' / ')});
+      }
+    })(s, src, []);
+    return out;
+  }
+
+  // ---------- types ----------
+  const BUILTIN=new Set(['int8','int16','int32','int64','uint8','uint16','uint32','uint64','decimal64','string','boolean',
+    'enumeration','bits','binary','leafref','identityref','empty','union','instance-identifier']);
+  // follows typedefs down to the built-in type; the most derived restriction wins
+  function resolveType(t, src, depth){
+    const r={name:t?t.a:'string', patterns:[]}; depth=depth||0;
+    let cur=t, csrc=src;
+    while(cur && depth++<30){
+      if(!r.range && sub(cur,'range')) r.range=sub(cur,'range').a;
+      if(!r.length && sub(cur,'length')) r.length=sub(cur,'length').a;
+      subs(cur,'pattern').forEach(p=>r.patterns.push(p.a));
+      if(!r.enums && subs(cur,'enum').length) r.enums=subs(cur,'enum').map(e=>e.a);
+      if(!r.bits && subs(cur,'bit').length) r.bits=subs(cur,'bit').map(e=>e.a);
+      if(r.fd==null && sub(cur,'fraction-digits')) r.fd=+sub(cur,'fraction-digits').a;
+      if(!r.path && sub(cur,'path')) r.path=sub(cur,'path').a;
+      if(!r.bases && subs(cur,'base').length) r.bases=subs(cur,'base').map(b=>qname(b.a, csrc).join(':'));
+      const a=cur.a||'';
+      if(BUILTIN.has(a)){
+        r.base=a;
+        if(a==='union') r.members=subs(cur,'type').map(m=>resolveType(m, csrc, depth));
+        return r;
+      }
+      const [m,n]=qname(a, csrc), td=NC.typedefs[m+':'+n];
+      if(!td){ r.base='string'; r.unknown=a; return r; }   // e.g. a typedef nested in a container
+      cur=sub(td.s,'type'); csrc=td.f;
+    }
+    r.base=r.base||'string'; return r;
+  }
+  function derivedIds(bases){
+    const ids=NC.ids, byKey={}; ids.forEach(i=>byKey[i.m+':'+i.a]=i);
+    const from=(id, b, d)=>d<30 && id.b.some(x=>x===b || (byKey[x] && from(byKey[x], b, d+1)));
+    return ids.filter(id=>(bases||[]).every(b=>from(id, b, 0))).map(id=>id.m+':'+id.a);
+  }
+  function typeHint(T){
+    const b=T.base;
+    if(b==='leafref') return 'leafref → '+(T.path||'?');
+    if(b==='union') return 'union('+T.members.map(m=>m.unknown||m.base).join(' | ')+')';
+    let h=T.unknown ? T.unknown+' (type not resolved: any text)' : (T.name!==b ? T.name+' ('+b+')' : b);
+    if(T.range) h+=' {'+T.range+'}';
+    if(T.length) h+=' length {'+T.length+'}';
+    if(T.fd!=null && b==='decimal64') h+=' '+T.fd+' decimals';
+    if(T.bits) h+=' bits: '+T.bits.join(' ');
+    return h;
+  }
+
+  // ---------- validation ----------
+  const INT={int8:[-128n,127n], int16:[-32768n,32767n], int32:[-2147483648n,2147483647n],
+    int64:[-9223372036854775808n,9223372036854775807n], uint8:[0n,255n], uint16:[0n,65535n],
+    uint32:[0n,4294967295n], uint64:[0n,18446744073709551615n]};
+  function inRanges(v, expr, lo, hi, num){
+    if(!expr) return true;
+    try{
+      return expr.split('|').some(part=>{
+        const [a,b]=part.split('..').map(x=>x.trim());
+        const conv=x=>x==='min'?lo:x==='max'?hi:num(x);
+        const A=conv(a), B=b===undefined?A:conv(b);
+        return v>=A && v<=B;
+      });
+    }catch(_){ return true; }
+  }
+  // XSD regular expression -> JS (anchored by the caller); null if it uses XSD-only syntax
+  function xsdToJs(p){
+    if(/\\[icIC]|\\p\{Is|-\[/.test(p)) return null;
+    let out='', inClass=false;
+    for(let i=0;i<p.length;i++){
+      const c=p[i];
+      if(c==='\\'){ out+=c+(p[i+1]||''); i++; continue; }
+      if(inClass){ if(c===']') inClass=false; out+=c; continue; }
+      if(c==='['){ inClass=true; out+=c; if(p[i+1]==='^'){ out+='^'; i++; } continue; }
+      out+=(c==='^'||c==='$') ? '\\'+c : c;   // literal characters in XSD
+    }
+    return out;
+  }
+  function check(v, T){
+    switch(T.base){
+      case 'boolean': return v==='true'||v==='false' ? '' : 'true or false';
+      case 'empty': case 'identityref': case 'leafref': case 'instance-identifier': case 'binary': return '';
+      case 'enumeration': return T.enums && !T.enums.includes(v) ? 'one of: '+T.enums.join(', ') : '';
+      case 'bits': return v.split(/\s+/).filter(Boolean).every(b=>!T.bits || T.bits.includes(b)) ? '' : 'bits: '+T.bits.join(' ');
+      case 'union': return T.members.some(m=>!check(v,m)) ? '' : 'not valid for '+typeHint(T);
+      case 'decimal64': {
+        if(!/^[-+]?\d+(\.\d+)?$/.test(v)) return 'decimal number';
+        if(T.fd!=null && (v.split('.')[1]||'').length>T.fd) return 'at most '+T.fd+' decimals';
+        return inRanges(+v, T.range, -Infinity, Infinity, Number) ? '' : 'range '+T.range;
+      }
+      default: {
+        if(INT[T.base]){
+          if(!/^[-+]?\d+$/.test(v)) return 'integer';
+          const n=BigInt(v), [lo,hi]=INT[T.base];
+          if(n<lo || n>hi) return T.base+' range '+lo+'..'+hi;
+          return inRanges(n, T.range, lo, hi, BigInt) ? '' : 'range '+T.range;
+        }
+        // string (and unresolved types)
+        if(T.length && !inRanges(BigInt([...v].length), T.length, 0n, 18446744073709551615n, BigInt)) return 'length '+T.length;
+        for(const p of T.patterns){
+          const js=xsdToJs(p); if(js==null) continue;
+          let re; try{ re=new RegExp('^(?:'+js+')$','u'); }catch(_){ continue; }
+          if(!re.test(v)) return 'pattern '+p;
+        }
+        return '';
+      }
+    }
+  }
+
+  // ---------- model of the selected node ----------
+  function field(s, src, extra){
+    const T=resolveType(sub(s,'type'), src);
+    const f=Object.assign({name:s.a, s:s, src:src, T:T, list:s.k==='leaf-list',
+      mandatory: !!(sub(s,'mandatory') && sub(s,'mandatory').a==='true'),
+      def: sub(s,'default') ? sub(s,'default').a : '', units: sub(s,'units') ? sub(s,'units').a : '',
+      desc: sub(s,'description') ? sub(s,'description').a : '', hint: typeHint(T)}, extra||{});
+    if(T.base==='identityref') f.choices=derivedIds(T.bases);
+    return f;
+  }
+  function keysOf(list, src){
+    const k=sub(list,'key'); if(!k) return [];
+    const kids=children(list, src);
+    return k.a.split(/\s+/).filter(Boolean).map(n=>n.replace(/^.*:/,'')).map(n=>{
+      const x=kids.find(c=>c.s.k==='leaf' && c.s.a===n);
+      return x ? {name:n, s:x.s, src:x.src} : {name:n, s:{k:'leaf',a:n}, src:src};
+    });
+  }
+  const isRo=s=>{ const c=sub(s,'config'); return !!(c && c.a==='false'); };
+
+  // chain: [{s, o}] from the module down to the selected statement (o = source it's written in)
+  function model(chain){
+    let steps=[], ro=false, rpc=null, action=null, io=null;
+    for(const {s, o} of chain){
+      if(s._root || s._sec) continue;
+      if(['grouping','notification','typedef','identity','feature','extension','deviation'].includes(s.k)) return null;
+      if(s.k==='augment'){
+        const A=NC.aug[s.a];
+        if(!A) return {error:'Augment target not resolved: '+s.a};
+        const lost=A.find(x=>x.missing);
+        if(lost) return {error:'Augment target not found ('+lost.m+':'+lost.n+' — module missing from the search paths?)'};
+        steps=[]; ro=false;
+        for(const x of A){
+          if(x.ro) ro=true;
+          if(x.k==='input' || x.k==='output' || x.k==='notification') return null;   // augments of RPCs: not supported
+          if(ELEMENT.has(x.k)) steps.push({name:x.n, m:x.m, kind:x.k, keys:(x.keys||[]).map(k=>({name:k.n, s:k.s, src:k.f}))});
+        }
+        continue;
+      }
+      if(s.k==='input' || s.k==='output'){ io=s.k; continue; }
+      if(s.k==='choice' || s.k==='case' || s.k==='uses') continue;
+      if(!ELEMENT.has(s.k)) return null;
+      if(isRo(s)) ro=true;
+      const st={name:s.a, m:D.module, kind:s.k, s:s, src:o||D.module, keys: s.k==='list' ? keysOf(s, o||D.module) : []};
+      if(s.k==='rpc'){ steps=[st]; rpc=st; continue; }
+      if(s.k==='action') action=st;
+      steps.push(st);
+    }
+    if(!steps.length || io==='output') return null;
+    const last=chain[chain.length-1].s;
+    if(!ELEMENT.has(last.k) && last.k!=='input') return null;   // choice, case, uses, augment, sections
+    const M={steps, ro, ops:[], keyFields:[], valueFields:[], target:null};
+    const actStep=rpc||action;
+    if(actStep){
+      M.ops=[rpc?'rpc':'action'];
+      M.target=actStep;
+      const input=sub(actStep.s,'input');
+      M.valueFields = input ? leaves(input, actStep.src).map(x=>field(x.s, x.src, {ctx:x.ctx})) : [];
+      steps.length = steps.indexOf(actStep)+1;   // nothing below the operation
+    } else {
+      M.target=steps[steps.length-1];
+      M.ops = ro ? ['get'] : ['get-config','edit-config','get'];
+      const t=M.target;
+      if(t.kind==='leaf' || t.kind==='leaf-list'){
+        const prev=steps[steps.length-2];
+        const isKey = prev && prev.kind==='list' && prev.keys.some(k=>k.name===t.name);
+        if(isKey) M.ops=['get-config','get'].filter(o=>!ro || o==='get');   // a key alone can't be edited
+        else M.valueFields=[field(t.s, t.src)];
+        M.targetIsKey=isKey;
+      } else if(t.s){
+        const keyNames=new Set(t.keys.map(k=>k.name));
+        M.valueFields = leaves(t.s, t.src).filter(x=>!keyNames.has(x.s.a) && !isRo(x.s)).map(x=>field(x.s, x.src, {ctx:x.ctx}));
+      }
+    }
+    // a key field for every list on the way (for actions: above the action)
+    steps.forEach((st, i)=>{ if(st.kind==='list') st.keys.forEach(k=>M.keyFields.push(field(k.s, k.src, {step:i, key:true}))); });
+    M.keyFields.forEach((f,i)=>f.id='k'+i);
+    M.valueFields.forEach((f,i)=>f.id='v'+i);
+    return M;
+  }
+
+  // ---------- XML ----------
+  // opt: {op, ds, edit, mid}; vals: {fieldId: string | [strings]}
+  function xml(M, opt, vals){
+    const op=opt.op, problems=[];
+    // leaf-lists: array (or text with one value per line); other fields: trimmed string
+    const val=f=>{
+      const v=vals[f.id];
+      if(f.list) return (Array.isArray(v) ? v : String(v==null?'':v).split('\n')).map(x=>String(x).trim()).filter(Boolean);
+      return v==null ? '' : String(v).trim();
+    };
+    const needKeys = op==='edit-config' || op==='action';
+    const sendValues = op==='rpc' || op==='action' || (op==='edit-config' && opt.edit!=='delete' && opt.edit!=='remove');
+    // validate
+    for(const f of M.keyFields){
+      const v=val(f);
+      if(!v){ if(needKeys) problems.push('key '+f.name+' is required'); continue; }
+      const e=check(v, f.T); if(e) problems.push(f.name+': '+e);
+    }
+    if(sendValues) for(const f of M.valueFields){
+      const vs = f.list ? val(f) : [val(f)].filter(Boolean);
+      if(!vs.length){ if(f.mandatory && (op!=='edit-config' || opt.edit==='create' || opt.edit==='replace')) problems.push(f.name+' is mandatory'); continue; }
+      if(f.T.base==='empty') continue;
+      for(const v of vs){ const e=check(v, f.T); if(e) problems.push(f.name+': '+e); }
+    }
+    const L=[], ind=n=>'  '.repeat(n);
+    // one leaf element (identityref values get their prefix declared)
+    const leafLine=(f, v, d, parentNs, attrs)=>{
+      attrs=attrs||'';
+      if(f.T.base==='empty') return ind(d)+'<'+f.name+attrs+'/>';
+      let text=v, extra='';
+      if(f.T.base==='identityref' && v.includes(':')){
+        const [m,n]=v.split(':'), mod=NC.mods[m];
+        if(mod){ text=mod.prefix+':'+n; extra=' xmlns:'+mod.prefix+'="'+xesc(mod.ns)+'"'; }
+      }
+      return ind(d)+'<'+f.name+attrs+extra+'>'+xesc(text)+'</'+f.name+'>';
+    };
+    const opAttr = op==='edit-config' ? ' nc:operation="'+opt.edit+'"' : '';
+    function step(i, d, parentNs){
+      const st=M.steps[i], ns=nsOf(st.m), last=i===M.steps.length-1;
+      const nsAttr = ns!==parentNs ? ' xmlns="'+xesc(ns)+'"' : '';
+      const keys=M.keyFields.filter(f=>f.step===i && val(f));
+      if(last){
+        const t=M.target;
+        if(t.kind==='leaf' || t.kind==='leaf-list'){
+          if(op==='edit-config'){
+            // values to set; for a leaf-list delete/remove they name the entries to remove
+            const f=M.valueFields[0], use=f && (sendValues || t.kind==='leaf-list');
+            const vs = use ? (f.list ? val(f) : [val(f)].filter(Boolean)) : [];
+            if(!vs.length) L.push(ind(d)+'<'+st.name+nsAttr+opAttr+'/>');
+            vs.forEach(v=>L.push(leafLine(f, v, d, ns, nsAttr+opAttr)));
+          } else L.push(ind(d)+'<'+st.name+nsAttr+'/>');   // selection node
+          return;
+        }
+        const body=[];
+        keys.forEach(f=>body.push(leafLine(f, val(f), d+1, ns)));
+        if(sendValues) for(const f of M.valueFields){
+          const vs = f.list ? val(f) : [val(f)].filter(Boolean);
+          if(f.T.base==='empty'){ if(vs.length && vs[0]!=='false') body.push(leafLine(f, '', d+1, ns)); continue; }
+          vs.forEach(v=>body.push(leafLine(f, v, d+1, ns)));
+        }
+        const attrs = nsAttr + (op==='edit-config' ? opAttr : '');
+        if(!body.length) L.push(ind(d)+'<'+st.name+attrs+'/>');
+        else { L.push(ind(d)+'<'+st.name+attrs+'>'); body.forEach(b=>L.push(b)); L.push(ind(d)+'</'+st.name+'>'); }
+        return;
+      }
+      L.push(ind(d)+'<'+st.name+nsAttr+'>');
+      const keyTarget = M.targetIsKey && i===M.steps.length-2;   // the selected leaf is this list's key
+      keys.forEach(f=>{ if(!(keyTarget && f.name===M.target.name)) L.push(leafLine(f, val(f), d+1, ns)); });
+      if(keyTarget){
+        const kf=M.keyFields.find(f=>f.step===i && f.name===M.target.name);
+        L.push(kf && val(kf) ? leafLine(kf, val(kf), d+1, ns) : ind(d+1)+'<'+M.target.name+'/>');
+      } else step(i+1, d+1, ns);
+      L.push(ind(d)+'</'+st.name+'>');
+    }
+    const mid=xesc(opt.mid||101);
+    const head='<rpc xmlns="'+BASE+'"'+(op==='edit-config' ? ' xmlns:nc="'+BASE+'"' : '')+' message-id="'+mid+'">';
+    L.push(head);
+    if(op==='get-config'){ L.push('  <get-config>', '    <source><'+(opt.ds||'running')+'/></source>', '    <filter type="subtree">'); step(0, 3, BASE); L.push('    </filter>', '  </get-config>'); }
+    else if(op==='get'){ L.push('  <get>', '    <filter type="subtree">'); step(0, 3, BASE); L.push('    </filter>', '  </get>'); }
+    else if(op==='edit-config'){ L.push('  <edit-config>', '    <target><'+(opt.ds||'running')+'/></target>', '    <config>'); step(0, 3, BASE); L.push('    </config>', '  </edit-config>'); }
+    else if(op==='rpc'){ step(0, 1, BASE); }
+    else if(op==='action'){ L.push('  <action xmlns="'+YANG1+'">'); step(0, 2, YANG1); L.push('  </action>'); }
+    L.push('</rpc>');
+    return {xml:L.join('\n'), problems};
+  }
+  return {model, xml, children, check, resolveType};
+}
+// netconf:end
+
 
 // ---------- virtual tree ----------
 const top = D.root.c||[];
@@ -342,6 +678,8 @@ function showDetail(li){
   const src=s._root ? '' : toYang(s,'',b)+(b.n<=0?'… (truncated)\n':'');
   let h='<div class="kw">'+esc(s.k)+'</div><h2>'+esc(s.a)+'</h2>';
   if(path) h+='<div class="path" title="Click to copy">'+esc(path)+'</div>';
+  const ncModel = NCB && !s._root ? NCB.model(ancestors(li).map(x=>({s:x._s, o:x._o}))) : null;
+  if(ncModel) h+='<details class="nc" id="nc"'+(ncPrefs.open?' open':'')+'><summary>NETCONF</summary><div class="nc-body"></div></details>';
   h+='<table>';
   if(o && !D.local.includes(o)) h+='<tr><td>module</td><td>'+esc(o)+'</td></tr>';
   if(file) h+='<tr><td>source</td><td>'+gotoLink(s.f||o, s.l, esc(file)+(s.l?' : line '+s.l:''))+'</td></tr>';
@@ -362,6 +700,77 @@ function showDetail(li){
     a.onclick=e=>{ e.preventDefault(); HOST.postMessage('goto\t'+a.dataset.p+'\t'+a.dataset.l); };
   const pe=$('detail').querySelector('.path');
   if(pe) pe.onclick=()=>{ navigator.clipboard && navigator.clipboard.writeText(path); pe.style.borderColor='var(--accent)'; };
+  if(ncModel) ncMount($('nc'), ncModel);
+}
+
+// ---------- NETCONF form (docked panel) ----------
+const ncPrefs={op:'', ds:'running', edit:'merge', open:true};
+let ncMid=101;
+function ncMount(box, M){
+  box.ontoggle=()=>{ ncPrefs.open=box.open; };
+  const body=box.querySelector('.nc-body');
+  if(M.error){ body.innerHTML='<div class="nc-prob">'+esc(M.error)+'</div>'; return; }
+  const opSel='<span class="nc-ops" id="ncOp">'+M.ops.map(o=>'<button data-op="'+o+'">'+o+'</button>').join('')+'</span>';
+  const dsSel='<select id="ncDs" title="Datastore"></select>';
+  const edSel='<select id="ncEd" title="edit-config operation">'+['merge','replace','create','delete','remove'].map(o=>'<option>'+o+'</option>').join('')+'</select>';
+  const ctl=f=>{
+    const T=f.T, a=' data-f="'+f.id+'" title="'+esc((f.desc||'').slice(0,400))+'"';
+    let opts=null;
+    if(T.base==='boolean') opts=['true','false'];
+    else if(T.base==='enumeration' && T.enums) opts=T.enums;
+    else if(T.base==='identityref' && f.choices && f.choices.length) opts=f.choices;
+    if(f.list) return '<textarea'+a+' rows="2" placeholder="one value per line"></textarea>';
+    if(T.base==='empty') return '<label style="font:inherit;padding:0"><input type="checkbox"'+a+'> present</label>';
+    if(opts) return '<select'+a+'><option value=""></option>'+opts.map(o=>'<option>'+esc(o)+'</option>').join('')+'</select>';
+    return '<input type="text"'+a+' placeholder="'+esc(f.def ? 'default '+f.def : '')+'" spellcheck="false">';
+  };
+  const row=f=>'<label class="'+(f.mandatory||f.key?'req':'')+'" title="'+esc(f.ctx||'')+'">'+esc(f.name)+'</label><div>'+ctl(f)
+    +'<div class="hint">'+esc(f.hint+(f.units?' · '+f.units:'')+(f.ctx?' · '+f.ctx:''))+'</div></div>';
+  body.innerHTML='<div class="nc-row">'+opSel+dsSel+edSel+'</div>'
+    +(M.keyFields.length?'<div class="nc-sec" id="ncKH">keys</div><div class="nc-grid">'+M.keyFields.map(row).join('')+'</div>':'')
+    +(M.valueFields.length?'<div class="nc-sec" id="ncVH"></div><div class="nc-grid" id="ncV">'+M.valueFields.map(row).join('')+'</div>':'')
+    +'<div class="nc-prob" id="ncProb"></div><pre class="nc-out" id="ncOut"></pre>'
+    +'<div class="nc-row"><button id="ncNew" title="Open the request in a new Notepad++ tab">Open in new tab</button>'
+    +'<button id="ncCopy" title="Copy the request to the clipboard">Copy</button></div>';
+  const q=sel=>body.querySelector(sel), ds=q('#ncDs'), ed=q('#ncEd');
+  const op={value: M.ops.includes(ncPrefs.op) ? ncPrefs.op : M.ops[0]};
+  q('#ncOp').onclick=e=>{ const b=e.target.closest('button'); if(b){ op.value=b.dataset.op; update(); } };
+  ed.value = ncPrefs.edit;
+  const fields=M.keyFields.concat(M.valueFields), byId={}; fields.forEach(f=>byId[f.id]=f);
+  let last='';
+  function update(){
+    ncPrefs.op=op.value; ncPrefs.edit=ed.value;
+    for(const b of body.querySelectorAll('.nc-ops button')) b.classList.toggle('on', b.dataset.op===op.value);
+    const o=op.value, dsList = o==='get-config' ? ['running','candidate','startup'] : o==='edit-config' ? ['running','candidate'] : [];
+    if(ds.dataset.for!==o){ ds.innerHTML=dsList.map(x=>'<option>'+x+'</option>').join(''); ds.dataset.for=o; ds.value=dsList.includes(ncPrefs.ds)?ncPrefs.ds:'running'; }
+    if(dsList.length) ncPrefs.ds=ds.value;
+    ds.hidden=!dsList.length; ed.hidden=o!=='edit-config';
+    // values: what gets sent (edit-config delete/remove: none, except leaf-list entries to remove)
+    const leafList = M.target && M.target.kind==='leaf-list';
+    const showVals = o==='rpc' || o==='action' || (o==='edit-config' && (!['delete','remove'].includes(ed.value) || leafList));
+    const vg=q('#ncV'), vh=q('#ncVH');
+    if(vg){ vg.hidden=vh.hidden=!showVals; vh.textContent = o==='rpc'||o==='action' ? 'input' : 'values (empty = not sent)'; }
+    const vals={};
+    for(const el of body.querySelectorAll('[data-f]')){
+      const f=byId[el.dataset.f];
+      const v = el.type==='checkbox' ? (el.checked?'true':'') : el.value;
+      vals[f.id]=v;
+      const items = f.list ? v.split('\n').map(x=>x.trim()).filter(Boolean) : (v.trim() ? [v.trim()] : []);
+      el.classList.toggle('bad', f.T.base!=='empty' && items.some(x=>NCB.check(x, f.T)));
+    }
+    const r=NCB.xml(M, {op:o, ds:ds.value, edit:ed.value, mid:ncMid}, vals);
+    last=r.xml;
+    q('#ncOut').textContent=r.xml;
+    q('#ncProb').textContent=r.problems.length ? '⚠ '+r.problems.join('\n⚠ ') : '';
+  }
+  body.addEventListener('input', update);
+  body.addEventListener('change', update);
+  q('#ncNew').onclick=()=>{ HOST.postMessage('newdoc\t'+last); ncMid++; update(); };
+  q('#ncCopy').onclick=e=>{
+    const b=e.target; navigator.clipboard.writeText(last).then(()=>{ b.textContent='Copied'; setTimeout(()=>b.textContent='Copy', 1200); });
+    ncMid++; update();
+  };
+  update();
 }
 
 // ---------- events ----------
