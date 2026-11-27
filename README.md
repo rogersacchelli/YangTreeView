@@ -5,8 +5,8 @@
 
 Read YANG modules (RFC 6020 / RFC 7950) the way you think about them: as a tree.
 Press **Ctrl+Alt+Y** in Notepad++ to open an interactive, collapsible tree of the
-current module in your browser. Groupings are filled in from imports and submodules,
-and there's search, schema paths, and a details pane.
+current module in a panel docked next to your code (or in your browser). Groupings are
+filled in from imports and submodules, and there's search, schema paths, and a details pane.
 
 ![YANG Tree View](docs/screenshot.png)
 
@@ -31,15 +31,34 @@ so the path is `plugins\YangTreeView\YangTreeView.dll`, then restart Notepad++.
 
 | Plugins → YANG Tree View → | |
 |---|---|
-| **Show YANG tree** `Ctrl+Alt+Y` | Render the active tab and open it in the default browser |
+| **Show YANG tree** `Ctrl+Alt+Y` | Render the active tab in the docked *YANG Tree View* panel (or the browser, see below) |
+| **Show YANG tree in browser** | Render the active tab and open it in the default browser |
+| **Use docked panel** ✓ | Off: *Show YANG tree* opens the browser, as in 1.0 |
+| **Panel follows active tab** ✓ | Off: the panel only changes when you press `Ctrl+Alt+Y` |
 | **Install YANG syntax highlighting** | Adds colouring and `{ }` folding for `.yang` files (restart Notepad++ afterwards) |
-| **Search paths...** | Opens `YangTreeView.ini`: one folder per line, searched recursively for imported modules |
+| **Search paths and settings...** | Opens `YangTreeView.ini`: one folder per line, searched recursively for imported modules, plus the two settings above |
 | **About** | Version info |
 
 - **Finding imported modules:** the plugin looks for `name.yang` or `name@revision.yang`
   (newest revision wins) in the current file's folder (3 levels deep), the folders listed
   in *Search paths*, and the `YANG_MODPATH` environment variable (`;`-separated).
+- **Settings** live in the same `YangTreeView.ini` as `panel=docked|browser` and
+  `follow=yes|no`. The menu ticks write them; if you edit the file, saving it in Notepad++
+  applies them.
 - **Syntax errors:** a message box describes the problem and the cursor jumps to the line.
+- **Docked panel:** drag its caption to dock it on another side or float it; close it with
+  its ✕. It reopens at startup if it was open when Notepad++ closed. The panel uses the
+  Microsoft Edge WebView2 Runtime (part of Windows 11, installed on most Windows 10 PCs by
+  Windows Update); without it, the tree opens in the browser instead.
+  - In a narrow panel the details pane moves under the tree.
+  - Colours follow Notepad++'s dark mode, also when you switch it while the panel is open.
+  - **↗** opens the same tree in your browser; **Esc** returns to the editor;
+    **Ctrl+Alt+Y** (or whatever Shortcut Mapper assigns) refreshes it from inside the panel.
+  - **Jump to source:** in the details pane, click *file : line* (or a grouping's line) to
+    open that file at that line, including submodules and imported modules.
+  - **Stays up to date:** while the panel is visible it refreshes when you save and follows
+    you to another `.yang` tab (*Panel follows active tab*). Expanded nodes, selection and scroll position are kept per
+    module. A syntax error doesn't interrupt you: the last good tree stays, with a red note.
 
 ### Viewer
 - **Navigate:** ▸ / ▾, double-click, or the keyboard (↑ ↓ → ← Enter).
@@ -51,7 +70,7 @@ so the path is `plugins\YangTreeView\YangTreeView.dll`, then restart Notepad++.
   every property, the full description, and the node's YANG text.
 - **Badges:** type or leafref target, `[key]`, `ro` (config false), `mandatory`,
   `= default`, units, `[min..max]`, `?feature`, `when`, `must`, `deprecated` / `obsolete`.
-- **Theme:** ◐ toggles light and dark.
+- **Theme:** ◐ toggles light and dark (in the docked panel, until Notepad++ switches its own mode).
 
 ## Command-line tool
 
@@ -73,12 +92,25 @@ cmake -B build -A ARM64  && cmake --build build --config Release
 tests\run_selftest.bat build\Release\YangTreeView.dll build\Release\fakehost.exe
 ```
 
+CMake downloads the WebView2 SDK (NuGet `Microsoft.Web.WebView2`, hash-checked) at configure
+time and links its static loader, so the plugin is still a single DLL. Offline:
+`-DWEBVIEW2_DIR=<extracted package>`.
+
 **MinGW-w64** (Linux/WSL/MSYS2): `./build.sh` builds static x64 and x86 binaries in `dist/`.
+MinGW can't use the static WebView2 loader, so these builds need `WebView2Loader.dll`
+(copied to `dist/<arch>/YangTreeView/`) next to the plugin.
+
+**Self-test with the real WebView2** (needs a desktop session): set
+`YANGTREEVIEW_HEADLESS=1` and `YANGTREEVIEW_SELFTEST_WEBVIEW=1` before `run_selftest.bat`;
+the fake host shows the panel in a window and waits for the page to load
+(`YANGTREEVIEW_SELFTEST_HOLD=<ms>` keeps it open; `YANGTREEVIEW_SELFTEST_START_TIMEOUT=<ms>`
+forces the WebView2 start-up timeout to test the browser fallback).
 
 | Path | What |
 |---|---|
 | `src/yang_core.*` | YANG tokenizer, parser, module loader, grouping resolution, JSON |
 | `src/plugin.cpp` | Notepad++ plugin interface and menu commands |
+| `src/dock_panel.*` | Docked panel: Notepad++ docking + WebView2 host |
 | `src/viewer_template.html` | Viewer UI; run `python tools/gen_template.py` after editing it |
 | `tools/gen_udl.py` | Generates the syntax-highlighting definitions (`udl/`, `src/udl_xml.h`) |
 | `tests/fakehost.cpp` | Fake Notepad++ host that drives the DLL through the plugin ABI (run in CI) |

@@ -536,14 +536,17 @@ static void jlist(std::string& o, const C& items) {
     o += ']';
 }
 
-static std::string buildPayload(Loader& L, Module* mod, const fs::path& input) {
+static std::string buildPayload(Loader& L, Module* mod, const fs::path& input, bool includePaths) {
     Source& main = mod->sources[0];
     std::vector<Stmt*> kids = main.root->c;
     std::map<std::string, std::string> files;
+    std::map<std::string, fs::path> paths;  // absolute paths, only with includePaths
     files[mod->name] = baseName(main.path.empty() ? input : main.path);
+    paths[mod->name] = main.path.empty() ? input : main.path;
     for (size_t i = 1; i < mod->sources.size(); ++i) {
         Source& src = mod->sources[i];
         files[src.name] = baseName(src.path);
+        paths[src.name] = src.path;
         for (Stmt* st : src.root->c) {
             if (kHeaderKw.count(st->k)) continue;
             st->f = src.name;
@@ -578,7 +581,10 @@ static std::string buildPayload(Loader& L, Module* mod, const fs::path& input) {
             if (!outGroups.count(g) && !localGids.count(g)) todo.push_back(g);
         auto mit = L.modules.find(git->second.m);
         if (mit != L.modules.end() && mit->second)
-            for (Source& s : mit->second->sources) files.emplace(s.name, baseName(s.path));
+            for (Source& s : mit->second->sources) {
+                files.emplace(s.name, baseName(s.path));
+                paths.emplace(s.name, s.path);
+            }
     }
 
     std::set<std::string> unresolved;
@@ -623,7 +629,21 @@ static std::string buildPayload(Loader& L, Module* mod, const fs::path& input) {
         o += ':';
         jstr(o, f.second);
     }
-    o += "},\"missing\":";
+    o += '}';
+    if (includePaths) {
+        o += ",\"paths\":{";
+        first = true;
+        for (auto& p : paths) {
+            if (!p.second.is_absolute()) continue;  // e.g. an unsaved "new 1" tab
+            if (!first) o += ',';
+            first = false;
+            jstr(o, p.first);
+            o += ':';
+            jstr(o, p.second.lexically_normal().u8string());
+        }
+        o += '}';
+    }
+    o += ",\"missing\":";
     jlist(o, L.missing);
     o += ",\"unresolved\":";
     jlist(o, unresolved);
@@ -671,7 +691,8 @@ std::string errorHtml(const std::string& msg) {
            htmlEscape(msg) + "</pre>";
 }
 
-RenderResult render(const std::string& textIn, const fs::path& sourcePath, const std::vector<SearchDir>& dirs) {
+RenderResult render(const std::string& textIn, const fs::path& sourcePath, const std::vector<SearchDir>& dirs,
+                    const RenderOptions& opts) {
     RenderResult res;
     try {
         std::string text = textIn;
@@ -680,7 +701,7 @@ RenderResult render(const std::string& textIn, const fs::path& sourcePath, const
             text.erase(0, 3);
         Loader L(dirs);
         Module* mod = L.load(text, sourcePath);
-        res.json = buildPayload(L, mod, sourcePath);
+        res.json = buildPayload(L, mod, sourcePath, opts.includePaths);
         res.module = mod->name;
         std::string page = templateText();
         // DATA is inserted last so payload text can never be mistaken for a marker
