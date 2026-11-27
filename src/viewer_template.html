@@ -173,7 +173,7 @@ body:not(.showdesc) .ds{display:none}
 const D = JSON.parse(document.getElementById('data').textContent);
 const G = Object.assign({}, D.groups);
 (function reg(s){ if(s.g!=null) G[s.g]={s:s,m:D.module}; (s.c||[]).forEach(reg); })(D.root);
-const NCB = (window.chrome && window.chrome.webview && D.nc) ? makeNetconf(D, G) : null;   // docked panel only
+const NCB = D.nc ? makeNetconf(D, G) : null;   // docked panel and browser
 
 const NESTED = new Set(['container','list','leaf','leaf-list','choice','case','anydata','anyxml','uses','augment','action','notification','input','output']);
 const DATANODE = new Set(['container','list','leaf','leaf-list','anydata','anyxml','rpc','action','notification','input','output']);
@@ -703,7 +703,7 @@ function showDetail(li){
   if(ncModel) ncMount($('nc'), ncModel);
 }
 
-// ---------- NETCONF form (docked panel) ----------
+// ---------- NETCONF form ----------
 const ncPrefs={op:'', ds:'running', edit:'merge', open:true};
 let ncMid=101;
 function ncMount(box, M){
@@ -730,7 +730,7 @@ function ncMount(box, M){
     +(M.keyFields.length?'<div class="nc-sec" id="ncKH">keys</div><div class="nc-grid">'+M.keyFields.map(row).join('')+'</div>':'')
     +(M.valueFields.length?'<div class="nc-sec" id="ncVH"></div><div class="nc-grid" id="ncV">'+M.valueFields.map(row).join('')+'</div>':'')
     +'<div class="nc-prob" id="ncProb"></div><pre class="nc-out" id="ncOut"></pre>'
-    +'<div class="nc-row"><button id="ncNew" title="Open the request in a new Notepad++ tab">Open in new tab</button>'
+    +'<div class="nc-row">'+(HOST?'<button id="ncNew" title="Open the request in a new Notepad++ tab">Open in new tab</button>':'')
     +'<button id="ncCopy" title="Copy the request to the clipboard">Copy</button></div>';
   const q=sel=>body.querySelector(sel), ds=q('#ncDs'), ed=q('#ncEd');
   const op={value: M.ops.includes(ncPrefs.op) ? ncPrefs.op : M.ops[0]};
@@ -765,9 +765,18 @@ function ncMount(box, M){
   }
   body.addEventListener('input', update);
   body.addEventListener('change', update);
-  q('#ncNew').onclick=()=>{ HOST.postMessage('newdoc\t'+last); ncMid++; update(); };
+  if(HOST) q('#ncNew').onclick=()=>{ HOST.postMessage('newdoc\t'+last); ncMid++; update(); };
   q('#ncCopy').onclick=e=>{
-    const b=e.target; navigator.clipboard.writeText(last).then(()=>{ b.textContent='Copied'; setTimeout(()=>b.textContent='Copy', 1200); });
+    const b=e.target, text=last;
+    const done=ok=>{ b.textContent=ok?'Copied':'Copy failed'; setTimeout(()=>b.textContent='Copy', 1200); };
+    // browsers without the async clipboard API (or that refuse it for file:// pages): select and copy
+    const fallback=()=>{
+      const t=document.createElement('textarea'); t.value=text; t.setAttribute('readonly','');
+      t.style.cssText='position:fixed;left:-9999px;top:0'; document.body.appendChild(t); t.select();
+      let ok=false; try{ ok=document.execCommand('copy'); }catch(_){} t.remove(); done(ok);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(()=>done(true), fallback);
+    else fallback();
     ncMid++; update();
   };
   update();

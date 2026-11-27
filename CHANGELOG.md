@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- NETCONF request builder in the browser view too (Show YANG tree in browser, and pages
+  made with `yang2html`): same form, preview and *Copy*; *Open in new tab* stays in the
+  docked panel. *Copy* falls back to select-and-copy where the clipboard API is refused.
+- `yang2html`: pages include the builder data; `--no-netconf` leaves it out.
+
+## 1.2.0 - 2026-11-27
 - NETCONF request builder in the docked panel: for the selected node, build a
   `get` / `get-config` (subtree filter), `edit-config` (merge, replace, create, delete,
   remove on running or candidate), `rpc` or `action` request. Fields for list keys and

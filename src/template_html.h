@@ -177,7 +177,7 @@ u8R"YT(egend .k-container .ic{background:var(--c-container)} .legend .k-list .ic
 const D = JSON.parse(document.getElementById('data').textContent);
 const G = Object.assign({}, D.groups);
 (function reg(s){ if(s.g!=null) G[s.g]={s:s,m:D.module}; (s.c||[]).forEach(reg); })(D.root);
-const NCB = (window.chrome && window.chrome.webview && D.nc) ? makeNetconf(D, G) : null;   // docked panel only
+const NCB = D.nc ? makeNetconf(D, G) : null;   // docked panel and browser
 
 const NESTED = new Set(['container','list','leaf','leaf-list','choice','case','anydata','anyxml','uses','augment','action','notification','input','output']);
 const DATANODE = new Set(['container','list','leaf','leaf-list','anydata','anyxml','rpc','action','notification','input','output']);
@@ -267,8 +267,8 @@ function makeNetconf(D, G){
     const b=T.base;
     if(b==='leafref') return 'leafref → '+(T.path||'?');
     if(b==='union') return 'union('+T.members.map(m=>m.unknown||m.base).join(' | ')+')';
-    let h=T.unknown ? T.unknown+' (type not resolved: any tex)YT",
-u8R"YT(t)' : (T.name!==b ? T.name+' ('+b+')' : b);
+    let h=T.unknown ? T.unknown+' (type not resolved: any text)' : (T.name!==b ? T.name+' ('+b+')')YT",
+u8R"YT( : b);
     if(T.range) h+=' {'+T.range+'}';
     if(T.length) h+=' length {'+T.length+'}';
     if(T.fd!=null && b==='decimal64') h+=' '+T.fd+' decimals';
@@ -432,10 +432,10 @@ u8R"YT(t)' : (T.name!==b ? T.name+' ('+b+')' : b);
     for(const f of M.keyFields){
       const v=val(f);
       if(!v){ if(needKeys) problems.push('key '+f.name+' is required'); continue; }
-      const e=check(v, f.T); if(e) problems.push()YT",
-u8R"YT(f.name+': '+e);
+      const e=check(v, f.T); if(e) problems.push(f.name+': '+e);
     }
-    if(sendValues) for(const f of M.valueFields){
+    if(sendValu)YT",
+u8R"YT(es) for(const f of M.valueFields){
       const vs = f.list ? val(f) : [val(f)].filter(Boolean);
       if(!vs.length){ if(f.mandatory && (op!=='edit-config' || opt.edit==='create' || opt.edit==='replace')) problems.push(f.name+' is mandatory'); continue; }
       if(f.T.base==='empty') continue;
@@ -575,11 +575,11 @@ function badges(s, origin){
   const st=sub(s,'status'); if(st && st.a!=='current') add('dep',st.a);
   if(s.k==='uses' && !FLAT) add('', s.r && G[s.r] ? 'grouping' : 'unresolved');
   if(s.k==='uses' && FLAT && !(s.r && G[s.r])) add('dep','unresolved grouping');
-  if(origin && !D.local.includes(origin)) add('org', origin, 'defined in module '+origin))YT",
-u8R"YT(;
+  if(origin && !D.local.includes(origin)) add('org', origin, 'defined in module '+origin);
   return B.join(' ');
 }
-function descOf(s){ const d=sub(s,'description'); return d ? d.a : ''; }
+function de)YT",
+u8R"YT(scOf(s){ const d=sub(s,'description'); return d ? d.a : ''; }
 
 // ---------- rendering ----------
 const tree=$('tree');
@@ -710,7 +710,7 @@ function showDetail(li){
   if(ncModel) ncMount($('nc'), ncModel);
 }
 
-// ---------- NETCONF form (docked panel) ----------
+// ---------- NETCONF form ----------
 const ncPrefs={op:'', ds:'running', edit:'merge', open:true};
 let ncMid=101;
 function ncMount(box, M){
@@ -729,8 +729,8 @@ function ncMount(box, M){
     if(f.list) return '<textarea'+a+' rows="2" placeholder="one value per line"></textarea>';
     if(T.base==='empty') return '<label style="font:inherit;padding:0"><input type="checkbox"'+a+'> present</label>';
     if(opts) return '<select'+a+'><option value=""></option>'+opts.map(o=>'<option>'+esc(o)+'</option>').join('')+'</select>';
-    return '<input type)YT",
-u8R"YT(="text"'+a+' placeholder="'+esc(f.def ? 'default '+f.def : '')+'" spellcheck="false">';
+    return '<input type="text"'+a+' placeholder="'+esc(f.def ? 'default '+f)YT",
+u8R"YT(.def : '')+'" spellcheck="false">';
   };
   const row=f=>'<label class="'+(f.mandatory||f.key?'req':'')+'" title="'+esc(f.ctx||'')+'">'+esc(f.name)+'</label><div>'+ctl(f)
     +'<div class="hint">'+esc(f.hint+(f.units?' · '+f.units:'')+(f.ctx?' · '+f.ctx:''))+'</div></div>';
@@ -738,7 +738,7 @@ u8R"YT(="text"'+a+' placeholder="'+esc(f.def ? 'default '+f.def : '')+'" spellch
     +(M.keyFields.length?'<div class="nc-sec" id="ncKH">keys</div><div class="nc-grid">'+M.keyFields.map(row).join('')+'</div>':'')
     +(M.valueFields.length?'<div class="nc-sec" id="ncVH"></div><div class="nc-grid" id="ncV">'+M.valueFields.map(row).join('')+'</div>':'')
     +'<div class="nc-prob" id="ncProb"></div><pre class="nc-out" id="ncOut"></pre>'
-    +'<div class="nc-row"><button id="ncNew" title="Open the request in a new Notepad++ tab">Open in new tab</button>'
+    +'<div class="nc-row">'+(HOST?'<button id="ncNew" title="Open the request in a new Notepad++ tab">Open in new tab</button>':'')
     +'<button id="ncCopy" title="Copy the request to the clipboard">Copy</button></div>';
   const q=sel=>body.querySelector(sel), ds=q('#ncDs'), ed=q('#ncEd');
   const op={value: M.ops.includes(ncPrefs.op) ? ncPrefs.op : M.ops[0]};
@@ -773,9 +773,18 @@ u8R"YT(="text"'+a+' placeholder="'+esc(f.def ? 'default '+f.def : '')+'" spellch
   }
   body.addEventListener('input', update);
   body.addEventListener('change', update);
-  q('#ncNew').onclick=()=>{ HOST.postMessage('newdoc\t'+last); ncMid++; update(); };
+  if(HOST) q('#ncNew').onclick=()=>{ HOST.postMessage('newdoc\t'+last); ncMid++; update(); };
   q('#ncCopy').onclick=e=>{
-    const b=e.target; navigator.clipboard.writeText(last).then(()=>{ b.textContent='Copied'; setTimeout(()=>b.textContent='Copy', 1200); });
+    const b=e.target, text=last;
+    const done=ok=>{ b.textContent=ok?'Copied':'Copy failed'; setTimeout(()=>b.textContent='Copy', 1200); };
+    // browsers without the async clipboard API (or that refuse it for file:// pages): select and copy
+    const fallback=()=>{
+      const t=document.createElement('textarea'); t.value=text; t.setAttribute('readonly','');
+      t.style.cssText='position:fixed;left:-9999px;top:0'; document.body.appendChild(t); t.select();
+      let ok=false; try{ ok=document.execCommand('copy'); }catch(_){} t.remove(); done(ok);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(()=>done(true), fallback);
+    else fallback();
     ncMid++; update();
   };
   update();
@@ -849,7 +858,8 @@ const res=$('results');
 function search(q){
   let test;
   const m=q.match(/^\/(.+)\/([a-z]*)$/);
-  try{ test = m ? (re=>a=>re.test(a))(new RegExp(m[1], m[2].includes('i')?m[2]:m[2]+'i')) : (ql=>a=>a.toLowerCase().includes(ql))(q.toLowerCase()); }
+  try{ test = m ? (re=>a=>re.test(a))(new RegExp(m[1], m[2].inclu)YT",
+u8R"YT(des('i')?m[2]:m[2]+'i')) : (ql=>a=>a.toLowerCase().includes(ql))(q.toLowerCase()); }
   catch(err){ return {err:String(err)}; }
   const hits=[]; let visits=0; const LIMIT=500, VMAX=400000;
   (function dfs(n, idx, names, depth, gseen){
@@ -859,8 +869,7 @@ function search(q){
       const s=ks[i].s; visits++;
       const nm = s._sec ? '' : (s.a||'');
       const p=idx.concat(i), pn = s._sec ? names : names.concat(nm);
-      if(!s._sec && test(nm)) hits.push({p:p, na)YT",
-u8R"YT(mes:pn, s:s});
+      if(!s._sec && test(nm)) hits.push({p:p, names:pn, s:s});
       if(hits.length>=LIMIT) return;
       // avoid infinite loops on non-flattened uses recursion
       if(s.k==='uses'){ if(gseen.has(s.r)) continue; const g2=new Set(gseen); g2.add(s.r); dfs(s,p,pn,depth+1,g2); }

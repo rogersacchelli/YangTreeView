@@ -28,22 +28,24 @@ static int run(const std::vector<fs::path>& args) {
     fs::path input, out;
     bool open = false;
     RenderOptions opts;
+    opts.includeNetconf = true;  // NETCONF request builder (no local paths)
     std::vector<SearchDir> extra;
     for (size_t i = 0; i < args.size(); ++i) {
         std::string a = args[i].u8string();
         if ((a == "-p" || a == "--path") && i + 1 < args.size()) extra.push_back({args[++i], 50});
         else if ((a == "-o" || a == "--output") && i + 1 < args.size()) out = args[++i];
         else if (a == "--open") open = true;
-        // undocumented: embed the data the Notepad++ panel gets (file paths, NETCONF builder
-        // support), for tests and debugging; such pages reveal local folders
-        else if (a == "--host-data") opts.includePaths = opts.includeNetconf = true;
+        else if (a == "--no-netconf") opts.includeNetconf = false;
+        // undocumented: embed the file paths the Notepad++ panel gets, for tests and
+        // debugging; such pages reveal local folders
+        else if (a == "--host-data") opts.includePaths = true;
         else if (a == "-h" || a == "--help") {
-            std::printf("yang2html %s\nusage: yang2html FILE.yang [-p DIR]... [-o OUT.html] [--open]\n", version());
+            std::printf("yang2html %s\nusage: yang2html FILE.yang [-p DIR]... [-o OUT.html] [--open] [--no-netconf]\n", version());
             return 0;
         } else input = args[i];
     }
     if (input.empty()) {
-        std::fprintf(stderr, "usage: yang2html FILE.yang [-p DIR]... [-o OUT.html] [--open]\n");
+        std::fprintf(stderr, "usage: yang2html FILE.yang [-p DIR]... [-o OUT.html] [--open] [--no-netconf]\n");
         return 2;
     }
     std::error_code ec;

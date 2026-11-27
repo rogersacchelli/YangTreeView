@@ -32,9 +32,9 @@ run_set() {  # <case-set> <module file> "<more implemented modules>" <search dir
   echo "== $set"
   if [[ "$bin" == *.exe ]]; then   # Windows build run from WSL: Windows paths
     local wd=() ; for d in "$@"; do wd+=(-p "$(wslpath -w "$d")"); done
-    "$bin" "$(wslpath -w "$mod")" "${wd[@]}" --host-data -o "$(wslpath -w "$work/$set.html")" >/dev/null
+    "$bin" "$(wslpath -w "$mod")" "${wd[@]}" -o "$(wslpath -w "$work/$set.html")" >/dev/null
   else
-    "$bin" "$mod" "${dirs[@]}" --host-data -o "$work/$set.html" >/dev/null
+    "$bin" "$mod" "${dirs[@]}" -o "$work/$set.html" >/dev/null
   fi
   node "$here/netconf_test.js" "$work/$set.html" "$work/$set" "$set" || fail=1
   while read -r type file expect; do
