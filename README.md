@@ -61,8 +61,8 @@ so the path is `plugins\YangTreeView\YangTreeView.dll`, then restart Notepad++.
     module. A syntax error doesn't interrupt you: the last good tree stays, with a red note.
   - **NETCONF requests:** see below.
 
-### NETCONF request builder (docked panel)
-Select a node and open the **NETCONF** section of the details pane:
+### NETCONF request builder
+In the docked panel and in the browser view, select a node and open the **NETCONF** section of the details pane:
 
 - **Operation:** `get-config`, `edit-config`, `get` for data nodes (`get` only for
   `config false` data), `rpc` for RPCs and `action` for actions. `get-config` and
@@ -75,7 +75,8 @@ Select a node and open the **NETCONF** section of the details pane:
   all entries.
 - **Namespaces** come from the model, including nodes added to other modules by
   `augment` (e.g. `/if:interfaces/if:interface`, with its `name` key).
-- **Open in new tab** puts the request in a new Notepad++ document (XML); **Copy** copies it.
+- **Open in new tab** (docked panel) puts the request in a new Notepad++ document (XML);
+  **Copy** copies it.
 
 The builder writes requests; it doesn't connect to devices. Use your NETCONF client to send
 them. It doesn't evaluate `when` / `must`, check leafref targets, or apply deviations and
@@ -99,8 +100,10 @@ refines.
 Notepad++:
 
 ```
-yang2html.exe module.yang [-p C:\yang\models]... [-o out.html] [--open]
+yang2html.exe module.yang [-p C:\yang\models]... [-o out.html] [--open] [--no-netconf]
 ```
+
+Pages include the NETCONF request builder; `--no-netconf` leaves it out (a smaller page).
 
 ## Building
 
@@ -140,6 +143,7 @@ forces the WebView2 start-up timeout to test the browser fallback).
 | `tools/gen_udl.py` | Generates the syntax-highlighting definitions (`udl/`, `src/udl_xml.h`) |
 | `tests/fakehost.cpp` | Fake Notepad++ host that drives the DLL through the plugin ABI (run in CI) |
 | `tests/run_netconf_test.sh` | NETCONF builder test: generated requests validated with `yanglint` (run in CI, Linux) |
+| `tests/run_browser_test.sh` | NETCONF builder in the browser view, checked in headless Chrome/Edge (run in CI, Linux) |
 
 **Releasing:** bump `src/version.h` (and `CHANGELOG.md`) and push to `main`. When that
 version has no release yet, CI builds every architecture, runs the self-test, creates the

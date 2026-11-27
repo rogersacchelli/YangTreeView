@@ -79,6 +79,9 @@ jobs:
       - name: Test
         run: tests/run_netconf_test.sh ./yang2html
 
+      - name: Test in a browser (headless Chrome, no Notepad++ host)
+        run: tests/run_browser_test.sh ./yang2html "$(command -v google-chrome || command -v chromium)"
+
   release:
     # Releases are cut from main: if src/version.h names a version with no release yet,
     # GitHub creates tag vX.Y.Z and publishes the release. (Pushing a vX.Y.Z tag works too.)
