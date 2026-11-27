@@ -1,6 +1,16 @@
 # Changelog
 
 ## Unreleased
+- NETCONF request builder in the docked panel: for the selected node, build a
+  `get` / `get-config` (subtree filter), `edit-config` (merge, replace, create, delete,
+  remove on running or candidate), `rpc` or `action` request. Fields for list keys and
+  values come from the model (enum, boolean and identityref lists; ranges, lengths,
+  patterns and mandatory leaves checked); augments into other modules get the right
+  namespaces and keys. *Open in new tab* puts the request in a new XML document; *Copy*
+  copies it.
+- Dark mode: native scrollbars and form controls in the viewer are dark too.
+
+## 1.1.0 - 2026-11-27
 - Docked viewer: Show YANG tree (Ctrl+Alt+Y) now opens the tree in a Notepad++ panel
   (Microsoft Edge WebView2) with the same page, features and style as the browser view.
   The panel can be docked on any side or floated, and is restored at startup if it was

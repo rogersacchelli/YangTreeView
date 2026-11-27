@@ -38,6 +38,8 @@ static bool g_dockShown = false;
 static bool g_dark = false;
 static std::map<int, bool> g_checks;  // NPPM_SETMENUITEMCHECK by cmdID
 static std::wstring g_savedPath;      // NPPM_GETFULLPATHFROMBUFFERID answer
+static int g_newDocs = 0, g_lang = -1;  // "Open in new tab": File > New, language
+static std::string g_setText;         // SCI_SETTEXT
 #define CHECK(cond, what) do { if (cond) printf("  PASS %s\n", what); else { printf("  FAIL %s\n", what); ++g_fail; } fflush(stdout); } while (0)
 
 static LRESULT CALLBACK NppProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -73,6 +75,8 @@ static LRESULT CALLBACK NppProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         case NPPM_DMMUPDATEDISPINFO: return TRUE;
         case NPPM_SETMENUITEMCHECK: g_checks[(int)w] = l != 0; return TRUE;
+        case NPPM_MENUCOMMAND: if (l == IDM_FILE_NEW) ++g_newDocs; return TRUE;
+        case NPPM_SETCURRENTLANGTYPE: g_lang = (int)l; return TRUE;
         case NPPM_GETFULLPATHFROMBUFFERID:
             if (l) lstrcpynW((wchar_t*)l, g_savedPath.c_str(), MAX_PATH);
             return (LRESULT)g_savedPath.size();
@@ -115,6 +119,7 @@ static LRESULT CALLBACK SciProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return (LRESULT)n;
         }
         case SCI_GOTOLINE: g_gotoLine = (int)w; return 0;
+        case SCI_SETTEXT: g_setText = (const char*)l; return 0;
     }
     return DefWindowProcW(h, m, w, l);
 }
@@ -171,6 +176,14 @@ int wmain(int argc, wchar_t** argv) {
     if (!setInfo || !getFuncs || !getName || !isUni || !beNot || !msgProc) { printf("FAIL exports\n"); return 1; }
     auto notify = (void (*)(SCNotification*))(void*)beNot;
     bool webview = headless && GetEnvironmentVariableW(L"YANGTREEVIEW_SELFTEST_WEBVIEW", nullptr, 0) > 0;
+    if (webview)  // NETCONF builder, end to end: select mtu, edit-config, value 9000, "Open in new tab"
+        SetEnvironmentVariableW(L"YANGTREEVIEW_SELFTEST_SCRIPT",
+            L"(function(){var row=[].slice.call(document.querySelectorAll('#tree .row')).filter(function(r){"
+            L"var n=r.querySelector('.nm');return n&&n.textContent==='mtu';})[0];row.click();"
+            L"document.querySelector('.nc-ops button[data-op=\"edit-config\"]').click();"
+            L"var i=document.querySelector('#ncV input[type=text]');i.value='9000';"
+            L"i.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('ncNew').click();"
+            L"return document.getElementById('ncOut').textContent.length;})()");
 
     WNDCLASSW wc = {};
     wc.lpfnWndProc = NppProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FakeNpp";
@@ -320,6 +333,14 @@ int wmain(int argc, wchar_t** argv) {
         printf("TEST webview: finished=%d\n", (int)done);
         CHECK(log.find("navigation completed: ok") != std::string::npos, "webview: page loaded in docked panel");
         CHECK(log.find("WebView2 failed") == std::string::npos, "webview: no WebView2 failure");
+        // the test script filled in the NETCONF form and pressed "Open in new tab"
+        pumpUntil([] { return g_newDocs > 0; }, 10000);
+        printf("TEST netconf new tab: newdocs=%d lang=%d\n%s\n", g_newDocs, g_lang, g_setText.c_str());
+        CHECK(g_newDocs == 1 && g_lang == L_XML, "netconf: new tab opened as XML");
+        CHECK(g_setText.find("<mtu nc:operation=\"merge\">9000</mtu>") != std::string::npos &&
+                  g_setText.find("<target><running/></target>") != std::string::npos,
+              "netconf: edit-config request for mtu in the new tab");
+        CHECK(g_setText.find("\r\n") != std::string::npos, "netconf: line endings follow the document (CRLF)");
         // Notepad++ switches to dark mode; the panel becomes a narrow side panel
         g_dark = true;
         send(NPPN_DARKMODECHANGED);
@@ -330,6 +351,8 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(readAll(dlgLog).find("[Dock] theme dark") != std::string::npos, "webview: dark mode change sent to panel");
         wchar_t hold[32] = {0};
         if (GetEnvironmentVariableW(L"YANGTREEVIEW_SELFTEST_HOLD", hold, 32)) pumpUntil([] { return false; }, (DWORD)_wtoi(hold));
+        if (g_newDocs)  // someone used "Open in new tab" in the window during the hold
+            printf("NEWDOC count=%d lang=%d text:\n%s\nENDDOC\n", g_newDocs, g_lang, g_setText.c_str());
     }
 
     // 1d) browser mode still works

@@ -374,6 +374,23 @@ static HRESULT onController(unsigned gen, HRESULT result, ICoreWebView2Controlle
                 COREWEBVIEW2_WEB_ERROR_STATUS st = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
                 a->get_WebErrorStatus(&st);
                 log(std::wstring(L"navigation completed: ") + (ok ? L"ok" : L"error " + std::to_wstring((int)st)));
+                // self-test only: drive the page once (YANGTREEVIEW_SELFTEST_SCRIPT, with the
+                // self-test log set), e.g. fill in the NETCONF form and press its buttons
+                static bool ran = false;
+                wchar_t script[4096] = {0};
+                if (ok && !ran && g_wv && GetEnvironmentVariableW(L"YANGTREEVIEW_SELFTEST", nullptr, 0) > 0 &&
+                    GetEnvironmentVariableW(L"YANGTREEVIEW_SELFTEST_SCRIPT", script, 4096) > 0) {
+                    ran = true;
+                    HRESULT hr = g_wv->ExecuteScript(
+                        script, callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+                                    IID_ICoreWebView2ExecuteScriptCompletedHandler,
+                                    [](HRESULT r, LPCWSTR json) -> HRESULT {
+                                        log(L"test script: " + hex(r) + L" " + (json ? json : L""));
+                                        return S_OK;
+                                    })
+                                    .get());
+                    log(L"test script started " + hex(hr));
+                }
                 return S_OK;
             })
             .get(),

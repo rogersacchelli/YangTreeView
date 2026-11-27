@@ -27,12 +27,16 @@ static std::string sanitize(std::string s) {
 static int run(const std::vector<fs::path>& args) {
     fs::path input, out;
     bool open = false;
+    RenderOptions opts;
     std::vector<SearchDir> extra;
     for (size_t i = 0; i < args.size(); ++i) {
         std::string a = args[i].u8string();
         if ((a == "-p" || a == "--path") && i + 1 < args.size()) extra.push_back({args[++i], 50});
         else if ((a == "-o" || a == "--output") && i + 1 < args.size()) out = args[++i];
         else if (a == "--open") open = true;
+        // undocumented: embed the data the Notepad++ panel gets (file paths, NETCONF builder
+        // support), for tests and debugging; such pages reveal local folders
+        else if (a == "--host-data") opts.includePaths = opts.includeNetconf = true;
         else if (a == "-h" || a == "--help") {
             std::printf("yang2html %s\nusage: yang2html FILE.yang [-p DIR]... [-o OUT.html] [--open]\n", version());
             return 0;
@@ -63,7 +67,7 @@ static int run(const std::vector<fs::path>& args) {
     if (!in) { std::fprintf(stderr, "error: cannot open %s\n", abs.u8string().c_str()); return 2; }
     std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
-    RenderResult r = render(text, abs, dirs);
+    RenderResult r = render(text, abs, dirs, opts);
     if (out.empty()) {
         fs::path d = fs::temp_directory_path(ec) / "yang2html";
         fs::create_directories(d, ec);

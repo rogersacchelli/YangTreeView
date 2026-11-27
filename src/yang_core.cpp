@@ -536,7 +536,239 @@ static void jlist(std::string& o, const C& items) {
     o += ']';
 }
 
-static std::string buildPayload(Loader& L, Module* mod, const fs::path& input, bool includePaths) {
+// ------------------------------------------------------------------------- //
+// NETCONF support data ("nc")
+// ------------------------------------------------------------------------- //
+
+static const std::set<std::string> kSchemaKw = {"container", "list",   "leaf",   "leaf-list",    "choice",
+                                                "case",      "anydata", "anyxml", "rpc",          "action",
+                                                "notification", "input", "output"};
+
+struct NodeAt {
+    Stmt* s = nullptr;
+    std::string src;  // source (module or submodule) where the statement is written
+};
+
+// Children of a schema node as seen in the data tree: 'uses' replaced by the grouping.
+static void schemaChildren(Loader& L, const NodeAt& n, std::vector<NodeAt>& out, int depth = 0) {
+    if (!n.s || depth > 40) return;
+    for (Stmt* c : n.s->c) {
+        if (c->k == "uses") {
+            auto g = L.groups.find(c->r);
+            if (g != L.groups.end()) schemaChildren(L, {g->second.s, g->second.s->f}, out, depth + 1);
+        } else if (kSchemaKw.count(c->k)) {
+            out.push_back({c, n.src});
+        }
+    }
+}
+
+// Key leaves of a list (they may come from a grouping or sit under nothing else).
+static void listKeys(Loader& L, const NodeAt& list, std::string& o) {
+    o += ",\"keys\":[";
+    Stmt* key = sub(list.s, "key");
+    bool first = true;
+    if (key) {
+        std::vector<NodeAt> kids;
+        schemaChildren(L, list, kids);
+        std::string names = key->a;
+        for (size_t p = 0; p < names.size();) {
+            size_t q = names.find_first_of(" \t\n", p);
+            if (q == std::string::npos) q = names.size();
+            std::string kn = names.substr(p, q - p);
+            p = q + 1;
+            if (kn.empty()) continue;
+            size_t colon = kn.find(':');
+            if (colon != std::string::npos) kn = kn.substr(colon + 1);
+            for (auto& k : kids)
+                if (k.s->k == "leaf" && k.s->a == kn) {
+                    if (!first) o += ',';
+                    first = false;
+                    o += "{\"n\":";
+                    jstr(o, kn);
+                    o += ",\"f\":";
+                    jstr(o, k.src);
+                    o += ",\"s\":";
+                    jstmt(o, k.s);
+                    o += '}';
+                    break;
+                }
+        }
+    }
+    o += ']';
+}
+
+static void ncPayload(Loader& L, Module* mod, const std::vector<Stmt*>& kids, std::string& o) {
+    // Imports are normally loaded lazily (only for groupings); types, identities and
+    // augment targets need all of them, transitively.
+    {
+        std::vector<std::string> todo;
+        std::set<std::string> seen;
+        auto addImports = [&](Module* m) {
+            for (Source& s : m->sources)
+                for (auto& p : s.prefixes)
+                    if (seen.insert(p.second).second) todo.push_back(p.second);
+        };
+        seen.insert(mod->name);
+        addImports(mod);
+        while (!todo.empty()) {
+            std::string name = todo.back();
+            todo.pop_back();
+            if (Module* m = L.loadByName(name)) addImports(m);
+        }
+    }
+    o += ",\"nc\":{\"mods\":{";
+    bool first = true;
+    for (auto& m : L.modules) {
+        if (!m.second) continue;
+        Stmt* ns = sub(m.second->sources[0].root, "namespace");
+        if (!first) o += ',';
+        first = false;
+        jstr(o, m.first);
+        o += ":{\"ns\":";
+        jstr(o, ns ? ns->a : "");
+        o += ",\"prefix\":";
+        jstr(o, m.second->prefix);
+        o += '}';
+    }
+    // source -> owning module and prefix map (to resolve "pfx:name" where it is written)
+    o += "},\"src\":{";
+    first = true;
+    for (auto& m : L.modules) {
+        if (!m.second) continue;
+        for (Source& s : m.second->sources) {
+            if (!first) o += ',';
+            first = false;
+            jstr(o, s.name);
+            o += ":{\"m\":";
+            jstr(o, m.first);
+            o += ",\"p\":{";
+            bool f2 = true;
+            for (auto& p : s.prefixes) {
+                if (!f2) o += ',';
+                f2 = false;
+                jstr(o, p.first);
+                o += ':';
+                jstr(o, p.second);
+            }
+            o += "}}";
+        }
+    }
+    // top-level typedefs of every loaded module: "module:name" -> {f, s}
+    o += "},\"typedefs\":{";
+    first = true;
+    for (auto& m : L.modules) {
+        if (!m.second) continue;
+        for (Source& s : m.second->sources)
+            for (Stmt* t : subs(s.root, "typedef")) {
+                if (!first) o += ',';
+                first = false;
+                jstr(o, m.first + ":" + t->a);
+                o += ":{\"f\":";
+                jstr(o, s.name);
+                o += ",\"s\":";
+                jstmt(o, t);
+                o += '}';
+            }
+    }
+    // identities with resolved bases ("module:name")
+    o += "},\"ids\":[";
+    first = true;
+    for (auto& m : L.modules) {
+        if (!m.second) continue;
+        for (Source& s : m.second->sources)
+            for (Stmt* id : subs(s.root, "identity")) {
+                if (!first) o += ',';
+                first = false;
+                o += "{\"m\":";
+                jstr(o, m.first);
+                o += ",\"a\":";
+                jstr(o, id->a);
+                o += ",\"b\":[";
+                bool f2 = true;
+                for (Stmt* b : subs(id, "base")) {
+                    std::string bm = m.first, bn = b->a;
+                    size_t c = bn.find(':');
+                    if (c != std::string::npos) {
+                        auto p = s.prefixes.find(bn.substr(0, c));
+                        if (p != s.prefixes.end()) bm = p->second;
+                        bn = bn.substr(c + 1);
+                    }
+                    if (!f2) o += ',';
+                    f2 = false;
+                    jstr(o, bm + ":" + bn);
+                }
+                o += "]}";
+            }
+    }
+    // augment targets: each step's module, kind, config false, list keys
+    o += "],\"aug\":{";
+    first = true;
+    std::set<std::string> done;
+    for (Stmt* a : kids) {
+        if (a->k != "augment" || !done.insert(a->a).second) continue;
+        std::string srcName = a->f.empty() ? mod->name : a->f;
+        const std::map<std::string, std::string>* prefixes = nullptr;
+        for (Source& s : mod->sources)
+            if (s.name == srcName) prefixes = &s.prefixes;
+        if (!first) o += ',';
+        first = false;
+        jstr(o, a->a);
+        o += ":[";
+        std::vector<NodeAt> level;  // candidates at the current depth
+        bool firstStep = true, lost = false;
+        std::string path = a->a;
+        for (size_t p = 0; p < path.size() && !lost;) {
+            while (p < path.size() && (path[p] == '/' || path[p] == ' ')) ++p;
+            size_t q = path.find('/', p);
+            if (q == std::string::npos) q = path.size();
+            std::string step = path.substr(p, q - p);
+            p = q;
+            while (!step.empty() && step.back() == ' ') step.pop_back();
+            if (step.empty()) continue;
+            std::string sm = mod->name, sn = step;
+            size_t c = step.find(':');
+            if (c != std::string::npos) {
+                if (prefixes) {
+                    auto it = prefixes->find(step.substr(0, c));
+                    if (it != prefixes->end()) sm = it->second;
+                }
+                sn = step.substr(c + 1);
+            }
+            if (firstStep) {  // top level of the target module (all its sources)
+                auto mit = L.modules.find(sm);
+                if (mit != L.modules.end() && mit->second)
+                    for (Source& s : mit->second->sources) schemaChildren(L, {s.root, s.name}, level);
+            }
+            NodeAt hit;
+            for (auto& n : level)
+                if (n.s->a == sn) { hit = n; break; }
+            if (!firstStep) o += ',';
+            firstStep = false;
+            o += "{\"n\":";
+            jstr(o, sn);
+            o += ",\"m\":";
+            jstr(o, sm);
+            if (!hit.s) {
+                o += ",\"missing\":true}";
+                lost = true;
+                break;
+            }
+            o += ",\"k\":";
+            jstr(o, hit.s->k);
+            Stmt* cf = sub(hit.s, "config");
+            if (cf && cf->a == "false") o += ",\"ro\":true";
+            if (hit.s->k == "list") listKeys(L, hit, o);
+            o += '}';
+            level.clear();
+            schemaChildren(L, hit, level);
+        }
+        o += ']';
+    }
+    o += "}}";
+}
+
+static std::string buildPayload(Loader& L, Module* mod, const fs::path& input, bool includePaths,
+                                bool includeNetconf) {
     Source& main = mod->sources[0];
     std::vector<Stmt*> kids = main.root->c;
     std::map<std::string, std::string> files;
@@ -643,6 +875,7 @@ static std::string buildPayload(Loader& L, Module* mod, const fs::path& input, b
         }
         o += '}';
     }
+    if (includeNetconf) ncPayload(L, mod, kids, o);
     o += ",\"missing\":";
     jlist(o, L.missing);
     o += ",\"unresolved\":";
@@ -701,7 +934,7 @@ RenderResult render(const std::string& textIn, const fs::path& sourcePath, const
             text.erase(0, 3);
         Loader L(dirs);
         Module* mod = L.load(text, sourcePath);
-        res.json = buildPayload(L, mod, sourcePath, opts.includePaths);
+        res.json = buildPayload(L, mod, sourcePath, opts.includePaths, opts.includeNetconf);
         res.module = mod->name;
         std::string page = templateText();
         // DATA is inserted last so payload text can never be mistaken for a marker

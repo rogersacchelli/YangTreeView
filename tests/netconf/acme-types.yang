@@ -1,0 +1,27 @@
+module acme-types {
+  yang-version 1.1;
+  namespace "urn:acme:types";
+  prefix at;
+  import acme-olt { prefix olt; }
+  import ietf-interfaces { prefix if; }
+
+  description "Test module for the NETCONF request builder: built-in types, identityref
+               from another module, union, choice, leaf-list and an augment.";
+
+  typedef percent { type decimal64 { fraction-digits 2; range "0..100"; } }
+
+  container settings {
+    leaf kind { type identityref { base olt:pon-type; } }
+    leaf ratio { type percent; }
+    leaf enabled { type empty; }
+    leaf flags { type bits { bit a; bit b; } }
+    leaf port { type union { type uint16; type enumeration { enum any; } } }
+    leaf-list tags { type string { length "1..8"; } }
+    leaf code { type string { pattern '\d{3}'; } }
+    leaf state { type string; config false; }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    leaf vlan { type uint16 { range "1..4094"; } }
+  }
+}

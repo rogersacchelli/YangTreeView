@@ -347,7 +347,8 @@ static bool renderActiveTab(bool quiet, fs::path& out, std::wstring& caption, st
 
     HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
     RenderOptions ro;
-    ro.includePaths = true;  // lets the panel open a node's file at its line
+    ro.includePaths = true;    // lets the panel open a node's file at its line
+    ro.includeNetconf = true;  // NETCONF request builder in the panel
     RenderResult r = render(text, src, dirs, ro);
     SetCursor(old);
 
@@ -389,7 +390,9 @@ static void configureDock() {
     c.module = g_hInst;
     c.dlgId = kShowTreeIdx;
     c.pagesDir = pagesDir();
-    c.userDataDir = webViewDataDir();
+    // the self-test gets its own WebView2 profile: a profile in use by Notepad++ (another
+    // program) can't be shared and fails with ERROR_INVALID_STATE
+    c.userDataDir = selftestLog() ? pluginsConfigDir() / L"WebView2-selftest" : webViewDataDir();
     // self-test: no WebView2 unless explicitly requested
     c.createWebView = !selftestLog() || _wgetenv(L"YANGTREEVIEW_SELFTEST_WEBVIEW");
     c.log = logLine;
@@ -439,8 +442,35 @@ static void gotoSource(const std::wstring& path, int line) {
     SetFocus(sci);
 }
 
+// "newdoc<TAB>text" (NETCONF request builder): a new tab with the text, as XML.
+static void openInNewTab(const std::wstring& text) {
+    SendMessageW(g_npp._nppHandle, NPPM_MENUCOMMAND, 0, IDM_FILE_NEW);
+    HWND sci = currentScintilla();
+    // the page uses \n; follow the new document's line endings
+    int eol = (int)SendMessageW(sci, SCI_GETEOLMODE, 0, 0);  // 0 CRLF, 1 CR, 2 LF
+    std::wstring t;
+    for (wchar_t c : text) {
+        if (c == L'\r') continue;
+        if (c == L'\n') t += eol == 0 ? L"\r\n" : eol == 1 ? L"\r" : L"\n";
+        else t += c;
+    }
+    std::string bytes;
+    if ((int)SendMessageW(sci, SCI_GETCODEPAGE, 0, 0) == SC_CP_UTF8) {
+        bytes = narrow(t);
+    } else {  // ANSI document
+        int n = WideCharToMultiByte(CP_ACP, 0, t.data(), (int)t.size(), nullptr, 0, nullptr, nullptr);
+        bytes.assign((size_t)n, '\0');
+        if (n) WideCharToMultiByte(CP_ACP, 0, t.data(), (int)t.size(), &bytes[0], n, nullptr, nullptr);
+    }
+    SendMessageW(sci, SCI_SETTEXT, 0, (LPARAM)bytes.c_str());
+    SendMessageW(g_npp._nppHandle, NPPM_SETCURRENTLANGTYPE, 0, L_XML);
+    SetFocus(sci);
+}
+
 static void onPanelMessage(const std::wstring& m) {
-    if (m.rfind(L"goto\t", 0) == 0) {
+    if (m.rfind(L"newdoc\t", 0) == 0) {
+        openInNewTab(m.substr(7));
+    } else if (m.rfind(L"goto\t", 0) == 0) {
         size_t t2 = m.find(L'\t', 5);
         if (t2 != std::wstring::npos) gotoSource(m.substr(5, t2 - 5), _wtoi(m.c_str() + t2 + 1));
     } else if (m == L"popout") {
