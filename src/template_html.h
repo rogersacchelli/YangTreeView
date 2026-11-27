@@ -35,6 +35,14 @@ button,select{padding:3px 8px;border:1px solid var(--line);border-radius:4px;bac
 button:hover{border-color:var(--accent)}
 label.chk{display:flex;gap:4px;align-items:center;cursor:pointer;user-select:none}
 .warn{width:100%;font-size:12px;color:#b45309}
+.brk{display:none}
+.warn.err{color:#dc2626}
+a.goto{color:var(--accent);text-decoration:none;cursor:pointer}
+a.goto:hover{text-decoration:underline}
+/* docked: pop-out button in the header's top-right corner, clear of the toolbar */
+header{position:relative}
+#popout{position:absolute;top:6px;right:8px}
+html.docked header>div:first-child{padding-right:36px}
 main{flex:1;display:flex;min-height:0}
 #treePane{flex:1 1 60%;overflow:auto;padding:6px 0 40px;outline:none}
 #split{width:5px;cursor:col-resize;background:var(--line)}
@@ -86,6 +94,27 @@ body:not(.showdesc) .ds{display:none}
 #results .hd{padding:6px 10px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between}
 .legend{font-size:11px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .legend span{display:flex;gap:3px;align-items:center}
+.legend .k-container .ic{background:var(--c-container)} .legend .k-list .ic{background:var(--c-list)}
+.legend .k-leaf .ic{background:var(--c-leaf)} .legend .k-leaf-list .ic{background:var(--c-leaflist)}
+.legend .k-choice .ic{background:var(--c-choice)} .legend .k-case .ic{background:var(--c-case)}
+.legend .k-uses .ic{background:var(--c-uses)} .legend .k-augment .ic{background:var(--c-augment)}
+.legend .k-rpc .ic{background:var(--c-rpc)} .legend .k-notification .ic{background:var(--c-notif)}
+/* narrow window or docked side panel: details pane under the tree, compact header */
+@media (max-width:700px){
+  header{padding:6px 8px;gap:6px}
+  header h1{font-size:14px}
+  .toolbar{margin-left:0;width:100%;gap:4px 6px;font-size:12px}
+  /* line 1: search ◐ - line 2: the options */
+  .toolbar input[type=search]{order:-3;flex:1 1 0;width:auto;min-width:0}
+  #theme{order:-2}
+  .brk{display:block;order:-1;flex-basis:100%;height:0}
+  button,select{padding:2px 6px}
+  main{flex-direction:column}
+  #treePane{flex:1 1 55%;min-height:60px}
+  #split{width:auto;height:5px;cursor:row-resize}
+  #detail{flex:0 0 40%;min-height:60px;padding:10px}
+  #results{left:6px;right:6px;width:auto}
+}
 </style>
 </head>
 <body class="showdesc">
@@ -97,12 +126,15 @@ body:not(.showdesc) .ds{display:none}
   <div class="toolbar">
     <input type="search" id="q" placeholder="Search node name… (Enter)" title="Case-insensitive; use /regex/ for regular expressions">
     <label class="chk" title="Replace 'uses' with the grouping contents (like pyang -f tree)"><input type="checkbox" id="flat" checked>Inline groupings</label>
-    <label class="chk"><input type="checkbox" id="desc" checked>Descriptions</label>
+    <label class="chk"><input type="checkbox" id="desc" checked>Descriptions<)YT",
+u8R"YT(/label>
     <select id="lvl" title="Expand to level">
       <option value="">Expand…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option value="99">All</option>
     </select>
     <button id="collapse">Collapse all</button>
     <button id="theme" title="Toggle light/dark">◐</button>
+    <button id="popout" title="Open in browser" hidden>↗</button>
+    <span class="brk"></span>
   </div>
   <div class="warn" id="warn"></div>
 </header>
@@ -126,12 +158,12 @@ const G = Object.assign({}, D.groups);
 const NESTED = new Set(['container','list','leaf','leaf-list','choice','case','anydata','anyxml','uses','augment','action','notification','input','output']);
 const DATANODE = new Set(['container','list','leaf','leaf-list','anydata','anyxml','rpc','action','notification','input','output']);
 const ABBR = {container:'C',list:'L',leaf:'l','leaf-list':'ll',choice:'ch','case':'ca',uses:'u',augment:'A',rpc:'rpc',action:'act',
-  notification:'N',input:'in',output:'out',grouping:'G',typedef:'T',identity:'id',feature)YT",
-u8R"YT(:'F',extension:'ext',deviation:'dev',
+  notification:'N',input:'in',output:'out',grouping:'G',typedef:'T',identity:'id',feature:'F',extension:'ext',deviation:'dev',
   anydata:'any',anyxml:'xml',module:'M',section:'▪'};
 const MAX_RENDER = 20000;
 
 let FLAT = true;
+const HOST = window.chrome && window.chrome.webview;  // set when docked in Notepad++ (WebView2)
 const $ = id => document.getElementById(id);
 const sub = (s,k) => (s.c||[]).find(x=>x.k===k);
 const subs = (s,k) => (s.c||[]).filter(x=>x.k===k);
@@ -257,7 +289,8 @@ function expandTo(li, depth, budget){
   for(const c of li._ul.children){ if(budget.n--<=0) return; expandTo(c, depth-1, budget); }
 }
 
-// ---------- selection / details ----------
+// ---------- selection)YT",
+u8R"YT( / details ----------
 let selLi=null;
 function select(li, scroll){
   if(selLi) selLi.firstChild.classList.remove('sel');
@@ -294,9 +327,15 @@ function propRows(s){
   return (s.c||[]).filter(c=>!NESTED.has(c.k) && !skip.has(c.k) && c.k!=='grouping' && c.k!=='typedef').map(c=>{
     let v=esc(c.a);
     if(c.c && c.c.length){ const b={n:300}; v+= (v?' ':'')+'<pre class="src" style="margin:4px 0 0;max-height:220px">'+esc((c.c||[]).map(x=>toYang(x,'',b)).join(''))+'</pre>'; }
-    return '<tr><td>'+esc(c)YT",
-u8R"YT(.k)+'</td><td>'+v+'</td></tr>';
+    return '<tr><td>'+esc(c.k)+'</td><td>'+v+'</td></tr>';
   }).join('');
+}
+// Docked in Notepad++: "file : line" opens the file at that line (D.paths is only
+// embedded by the plugin).
+function gotoLink(src, line, html){
+  const p = HOST && D.paths && D.paths[src];
+  if(!p || !line) return html;
+  return '<a class="goto" data-p="'+esc(p)+'" data-l="'+(+line)+'" title="Open in Notepad++">'+html+'</a>';
 }
 function showDetail(li){
   const s=li._s, o=li._o;
@@ -310,8 +349,8 @@ function showDetail(li){
   if(path) h+='<div class="path" title="Click to copy">'+esc(path)+'</div>';
   h+='<table>';
   if(o && !D.local.includes(o)) h+='<tr><td>module</td><td>'+esc(o)+'</td></tr>';
-  if(file) h+='<tr><td>source</td><td>'+esc(file)+(s.l?' : line '+s.l:'')+'</td></tr>';
-  if(s.k==='uses'){ const g=G[s.r]; h+='<tr><td>grouping</td><td>'+(g?esc(g.m)+' : '+esc(g.s.a)+(g.s.l?' (line '+g.s.l+')':''):'<b>not resolved</b> — module not found in search path')+'</td></tr>'; }
+  if(file) h+='<tr><td>source</td><td>'+gotoLink(s.f||o, s.l, esc(file)+(s.l?' : line '+s.l:''))+'</td></tr>';
+  if(s.k==='uses'){ const g=G[s.r]; h+='<tr><td>grouping</td><td>'+(g?esc(g.m)+' : '+gotoLink(g.s.f||g.m, g.s.l, esc(g.s.a)+(g.s.l?' (line '+g.s.l+')':'')):'<b>not resolved</b> — module not found in search path')+'</td></tr>'; }
   if(s._root){ ['namespace','prefix','yang-version','organization','contact'].forEach(k=>{const x=sub(D.root,k); if(x) h+='<tr><td>'+k+'</td><td>'+esc(x.a)+'</td></tr>';});
     const revs=subs(D.root,'revision'); revs.slice(0,3).forEach(r=>h+='<tr><td>revision</td><td>'+esc(r.a)+'</td></tr>');
     if(revs.length>3) h+='<tr><td></td><td>… '+(revs.length-3)+' older revision(s)</td></tr>';
@@ -324,6 +363,8 @@ function showDetail(li){
   if(src) h+='<details style="margin-top:10px"><summary>YANG source</summary><pre class="src">'+esc(src)+'</pre></details>';
   if(s._root) h+=LEGEND;
   $('detail').innerHTML=h;
+  for(const a of $('detail').querySelectorAll('a.goto'))
+    a.onclick=e=>{ e.preventDefault(); HOST.postMessage('goto\t'+a.dataset.p+'\t'+a.dataset.l); };
   const pe=$('detail').querySelector('.path');
   if(pe) pe.onclick=()=>{ navigator.clipboard && navigator.clipboard.writeText(path); pe.style.borderColor='var(--accent)'; };
 }
@@ -358,12 +399,38 @@ $('lvl').onchange=e=>{
 };
 $('flat').onchange=e=>{ FLAT=e.target.checked; build(); };
 $('desc').onchange=e=>document.body.classList.toggle('showdesc', e.target.checked);
-$('theme').onclick=()=>{ const d=document.documentElement.classList.toggle('dark'); try{localStorage.setItem('yang2html-theme', d?'dark':'light');}catch(_){} };
-try{ const t=localStorage.getItem('yang2html-theme'); if(t==='dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark'); }catch(_){}
+// Docked in Notepad++ (WebView2): the theme follows Notepad++ (?theme= at load, then
+// messages); ◐ still overrides it until Notepad++ switches again.
+const setDark = d => document.documentElement.classList.toggle('dark', !!d);
+const qsTheme = new URLSearchParams(location.search).get('theme');
+$('theme').onclick=()=>{ const d=document.documentElement.classList.toggle('dark'); if(!HOST){ try{localStorage.setItem('yang2html-theme', d?'dark':'light');}catch(_){} } };
+if(HOST && qsTheme) setDark(qsTheme==='dark');
+else try{ const t=localStorage.getItem('yang2html-theme'); if(t==='dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) setDark(true); }catch(_){}
+if(HOST){
+  HOST.addEventListener('message', e=>{
+    const m=e.data; if(!m) return;
+    if(m.type==='theme') setDark(m.dark);
+    // e.g. a syntax error after saving: the tree shown is the last one that rendered
+    else if(m.type==='status'){ const w=$('warn'); w.textContent=m.text||''; w.classList.toggle('err', !!m.text); w.style.display=m.text?'':'none'; }
+  });
+  document.documentElement.classList.add('docked');
+  const po=$('popout'); po.hidden=false; po.onclick=()=>HOST.postMessage('popout');
+  // Esc (outside the search box and its results) returns to the editor
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape' && e.target.id!=='q' && res.style.display!=='block') HOST.postMessage('focus-editor');
+  });
+}
 
 // splitter
-(function(){ const sp=$('split'), det=$('detail'); let x0,w0;
-  sp.onmousedown=e=>{ x0=e.clientX; w0=det.offsetWidth; document.onmousemove=m=>{ det.style.flexBasis=Math.max(200,w0-(m.clientX-x0))+'px'; }; document.onmouseup=()=>{document.onmousemove=null;}; e.preventDefault(); };
+(function(){ const sp=$('split'), det=$('detail'), narrow=matchMedia('(max-width:700px)');
+  // side by side: drag sets the details width; stacked (narrow): its height
+  sp.onmousedown=e=>{
+    const v=narrow.matches, p0=v?e.clientY:e.clientX, s0=v?det.offsetHeight:det.offsetWidth;
+    document.onmousemove=m=>{ const d=(v?m.clientY:m.clientX)-p0; det.style.flexBasis=Math.max(v?60:200, s0-d)+'px'; };)YT",
+u8R"YT(
+    document.onmouseup=()=>{document.onmousemove=null;}; e.preventDefault(); };
+  const reset=()=>{ det.style.flexBasis=''; };
+  if(narrow.addEventListener) narrow.addEventListener('change', reset); else narrow.addListener(reset);
 })();
 
 // ---------- search ----------
@@ -405,6 +472,7 @@ $('q').addEventListener('keydown', e=>{
   if(r.err){ res.innerHTML='<div class="hd">'+esc(r.err)+'</div>'; res.style.display='block'; return; }
   res.innerHTML='<div class="hd"><span>'+r.hits.length+(r.capped?'+':'')+' match(es)</span><a href="#" id="rclose">close</a></div>'
     + r.hits.map((h,i)=>'<div class="r" data-i="'+i+'"><b>'+esc(h.s.a)+'</b> <small>'+esc(h.s.k)+' · /'+esc(h.names.filter(Boolean).join('/'))+'</small></div>').join('');
+  res.style.top=(document.querySelector('header').getBoundingClientRect().bottom+4)+'px';
   res.style.display='block';
   res.onclick=ev=>{ if(ev.target.id==='rclose'){ res.style.display='none'; ev.preventDefault(); return; }
     const d=ev.target.closest('.r'); if(d) reveal(r.hits[+d.dataset.i].p); };
@@ -423,8 +491,57 @@ D.warnings.forEach(w=>W.push(w));
 $('warn').textContent=W.join('  |  '); if(!W.length) $('warn').style.display='none';
 const LEGEND='<div class="legend">'+Object.entries({container:'container',list:'list',leaf:'leaf','leaf-list':'leaf-list',choice:'choice','case':'case',uses:'uses',augment:'augment',rpc:'rpc',notification:'notification'})
   .map(([k,n])=>'<span class="k-'+k+'"><span class="ic">'+ABBR[k]+'</span>'+n+'</span>').join('')+'</div>';
-build();
-$('treePane').focus();
+// ---------- keep the view across re-renders (docked panel reloads on save / Ctrl+Alt+Y) ----------
+// Nodes are identified by kind:name (+ index among equal siblings), so edits elsewhere in
+// the module don't scramble the expanded set.
+const STATE_KEY='yang2html-state:'+D.module;
+function keyOf(li){
+  const s=li._s, k=s.k+':'+(s.a==null?'':s.a); let n=0;
+  for(let x=li.previousElementSibling; x; x=x.previousElementSibling){ const t=x._s; if(t.k+':'+(t.a==null?'':t.a)===k) n++; }
+  return n? k+'#'+n : k;
+}
+function pathOf(li){ const p=[]; for(let x=li; x && x._s; x=x.parentElement.closest('li')) p.unshift(keyOf(x)); return p; }
+function findPath(p){
+  let li=tree.firstChild; if(!li || keyOf(li)!==p[0]) return null;
+  for(let i=1;i<p.length;i++){
+    if(!kids(li._s).length) return null;
+    const ul=ensureKids(li); let next=null;
+    for(const c of ul.children) if(keyOf(c)===p[i]){ next=c; break; }
+    if(!next) return null; li=next;
+  }
+  return li;
+}
+function saveState(){
+  try{
+    const open=[]; (function walk(ul){ for(const li of ul.children) if(isOpen(li)){ open.push(pathOf(li)); if(li._ul) walk(li._ul); } })(tree);
+    sessionStorage.setItem(STATE_KEY, JSON.stringify({open, sel: selLi?pathOf(selLi):null,
+      scroll: $('treePane').scrollTop, dscroll: $('detail').scrollTop}));
+    sessionStorage.setItem('yang2html-ui', JSON.stringify({flat:FLAT, desc:$('desc').checked}));
+  }catch(_){}
+}
+function restoreState(){
+  let st=null;
+  try{
+    const ui=JSON.parse(sessionStorage.getItem('yang2html-ui')||'null');
+    if(ui){ if(ui.flat!==FLAT){ FLAT=ui.flat; $('flat').checked=FLAT; } if(ui.desc===false){ $('desc').checked=false; document.body.classList.remove('showdesc'); } }
+    st=JSON.parse(sessionStorage.getItem(STATE_KEY)||'null');
+  }catch(_){}
+  build();
+  if(!st) return null;
+  for(const li of tree.querySelectorAll('li.open')) setOpen(li,false);
+  for(const p of st.open||[]){ const li=findPath(p); if(li) setOpen(li,true); }
+  const sel = st.sel && findPath(st.sel);
+  if(sel){ for(let x=sel.parentElement.closest('li'); x; x=x.parentElement.closest('li')) setOpen(x,true); select(sel); }
+  return st;
+}
+addEventListener('pagehide', saveState);
+const restored = restoreState();
+// no scrolling on load: the docked panel may still be resizing when the page opens
+$('treePane').focus({preventScroll:true});
+addEventListener('load', ()=>{
+  $('treePane').scrollTop = restored ? restored.scroll||0 : 0;
+  $('detail').scrollTop = restored ? restored.dscroll||0 : 0;
+});
 })();
 </script>
 </body>

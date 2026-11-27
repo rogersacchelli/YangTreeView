@@ -22,10 +22,16 @@ struct RenderResult {
     int errorLine = 0;      // 1-based line in the input, 0 if unknown
 };
 
+struct RenderOptions {
+    // Embed each source file's absolute path ("paths" in the payload) so a host can open
+    // the file at a node's line. Off by default: pages may be shared, paths reveal folders.
+    bool includePaths = false;
+};
+
 // text: UTF-8 YANG source of the main module.
 // sourcePath: where it came from (used for file names in the UI).
 RenderResult render(const std::string& text, const fs::path& sourcePath,
-                    const std::vector<SearchDir>& dirs);
+                    const std::vector<SearchDir>& dirs, const RenderOptions& opts = {});
 
 std::string errorHtml(const std::string& msg);
 
